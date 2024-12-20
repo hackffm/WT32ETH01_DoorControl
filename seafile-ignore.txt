@@ -1,0 +1,6 @@
+# put in Seafile library root folder, otherwise will not have effect
+*/.pio/
+*/.git/
+
+
+
