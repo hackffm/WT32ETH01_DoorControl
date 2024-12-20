@@ -105,8 +105,10 @@
         <label for="keyname">Username for key:</label>
         <input type="text" id="keyname" value="Your Name"><br><br>
         <button class="button" onclick="generateKey()">Generate Private Key</button><br>
-        <textarea id="privateKey" rows="4" cols="68" readonly placeholder="Your private key will appear here..."></textarea>
+        <textarea id="privateKey" rows="4" cols="68" placeholder="Your private key will appear here..."></textarea>
         <br><button class="button" onclick="saveToFile()">Download key</button>
+        <br><button class="button" id="lsSave">Save key in browser localStorage</button>
+        <br><button class="button" id="lsClear">clear browser door localStorage</button>
     </div>
   </div>
 
@@ -125,6 +127,78 @@
   let pubKey  = new Uint8Array(32);
   let nameKey = new Uint8Array(32);
   let challenge = new Uint8Array(8); 
+
+  // ------------------------------------------------
+  // begin: init localStorage
+
+  const buttonLocalStorageSave = document.getElementById('lsSave');
+  const buttonLocalStorageClear = document.getElementById('lsClear');
+
+  buttonLocalStorageSave.style.display = 'none';
+  buttonLocalStorageClear.style.display = 'none';
+  
+
+  // check if localstorage is available
+  function storageAvailable(type) {
+    let storage;
+    try {
+      storage = window[type];
+      const x = "__storage_test__";
+      storage.setItem(x, x);
+      storage.removeItem(x);
+      return true;
+    } catch (e) {
+      return (
+        e instanceof DOMException &&
+        e.name === "QuotaExceededError" &&
+        // acknowledge QuotaExceededError only if there's something already stored
+        storage &&
+        storage.length !== 0
+      );
+    }
+  }
+
+  let featureLocalStorageAvailable = false;
+
+  if (storageAvailable("localStorage")) {
+    featureLocalStorageAvailable = true;
+    buttonLocalStorageSave.style.display = 'block';
+    buttonLocalStorageSave.addEventListener("click", saveKeyInLocalStorage);
+  }
+
+  console.log(featureLocalStorageAvailable);
+
+  // if localStorage with my key is available 
+  let localStorageKeyDataAvailable = false;
+  let localStorageMyKey = null;
+
+  localStorageMyKey = localStorage.getItem("doorMyKey");
+  if (localStorageMyKey!=null) {
+    localStorageKeyDataAvailable = true;
+    localStorageMyKey = localStorage.getItem("doorMyKey");
+    buttonLocalStorageClear.addEventListener("click", clearKeyInLocalStorage);
+    buttonLocalStorageClear.style.display = 'block';
+
+    let msg = decryptKey(localStorageMyKey);
+    document.getElementById('fileContent').innerText = msg;
+    document.getElementById('privateKey').value = localStorageMyKey;
+  }
+
+  console.log(localStorageMyKey);
+
+  function saveKeyInLocalStorage() {
+    let privateKey = document.getElementById('privateKey').value;
+    localStorage.setItem("doorMyKey", privateKey);
+  };
+
+  function clearKeyInLocalStorage() {
+    localStorage.clear();
+  };
+
+  // end: init localStorage
+  // ------------------------------------------------
+  
+
   
   var protoTx = {
     'preambel'  : "D00r",
@@ -233,33 +307,38 @@
         const reader = new FileReader();
         reader.onload = function(e) {
             fileContent = e.target.result;  // Dateiinhalt in die Variable ablegen
-            let msg = "Invalid key";
-            const parse1 = hexToBytes(fileContent);
-            // check if key is valid
-            if(parse1.length == 96) {
-              const privFromFile = parse1.slice(0, 32);
-              const pubFromFile  = parse1.slice(32, 64);
-              const pubFromPriv  = nacl.sign.keyPair.fromSeed(privFromFile);
-              if(compareUint8Arrays(pubFromFile, pubFromPriv.publicKey)) {
-                msg = "Key opened: ";
-                privKey = pubFromPriv.secretKey;
-                pubKey  = pubFromPriv.publicKey;
-                nameKey = parse1.slice(64, 96);
-                const decoder = new TextDecoder('utf-8');
-                const nameKeyUtf8 = decoder.decode(nameKey);
-                msg += nameKeyUtf8;
-              } else {
-                msg = "Pub key does not fit to priv key ";
-              }
-              //msg += bufferToHex(privKey) + "\r" + bufferToHex(pubKey) 
-              //  + "\r" + bufferToHex(nameKey); 
-            }
+            let msg = decryptKey(fileContent);
             document.getElementById('fileContent').innerText = msg;  
         };
         document.getElementById('stateFile').innerText = file.name;
         reader.readAsText(file);  // Datei als Text lesen
         }
     });
+  }
+
+  function decryptKey(key) {
+    let msg = "Invalid key";
+    const parse1 = hexToBytes(key);
+    // check if key is valid
+    if(parse1.length == 96) {
+      const privFromFile = parse1.slice(0, 32);
+      const pubFromFile  = parse1.slice(32, 64);
+      const pubFromPriv  = nacl.sign.keyPair.fromSeed(privFromFile);
+      if(compareUint8Arrays(pubFromFile, pubFromPriv.publicKey)) {
+        msg = "Key opened: ";
+        privKey = pubFromPriv.secretKey;
+        pubKey  = pubFromPriv.publicKey;
+        nameKey = parse1.slice(64, 96);
+        const decoder = new TextDecoder('utf-8');
+        const nameKeyUtf8 = decoder.decode(nameKey);
+        msg += nameKeyUtf8;
+      } else {
+        msg = "Pub key does not fit to priv key ";
+      }
+      //msg += bufferToHex(privKey) + "\r" + bufferToHex(pubKey) 
+      //  + "\r" + bufferToHex(nameKey); 
+    }
+    return msg;
   }
   function toggle(){
     if(websocket.readyState !== WebSocket.OPEN) {
