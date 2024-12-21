@@ -4,6 +4,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <script type="text/javascript" src="/scripts/qrcode.js"></script>
   <style>
   html {
     font-family: Arial, Helvetica, sans-serif;
@@ -52,6 +53,8 @@
     -ms-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: rgba(0,0,0,0);
+    margin-top: 10px;
+    margin-bottom: 10px;
    }
    /*.button:hover {background-color: #0f8b8d}*/
    .button:active {
@@ -74,7 +77,14 @@
   <div class="topnav">
     <h1>Door Lock Web Server</h1>
   </div>
-  <div class="content">
+  <div class="content" id="cardTransferCode" style="display: none;">
+    <div class="card" >
+      <h2>Transfer Key</h2>
+      <p class="state" id="transferName">...</p>
+      <button class="button" id="transfer">Save key in browser</button>
+    </div>
+  </div>
+  <div class="content" id="cardOpenFile">
     <div class="card">
       <h2>Key file</h2>
       <p class="state">file loaded: <span id="stateFile">-</span></p>
@@ -82,14 +92,14 @@
       <p class="state" id="fileContent">Dateiinhalt wird hier angezeigt...</p>
     </div>
   </div>
-  <div class="content">
+  <div class="content" id="cardSate">
     <div class="card">
       <h2>Output - GPIO 2</h2>
       <p class="state">state: <span id="state">%STATE%</span></p>
       <p><button id="button" class="button">Toggle</button></p>
     </div>
   </div>
-  <div class="content">
+  <div class="content" id="cardCommand">
     <div class="card">
       <h2>Send Command</h2>
         <label for="labelCommand">Command:</label>
@@ -99,7 +109,7 @@
       <p><button id="buttonTxCommand" onclick="butTxCommand()" class="button">Send</button></p>
     </div>
   </div>  
-  <div class="content">
+  <div class="content" id="cardKeyGen">
      <div class="card">
         <h2>ED25519 Private Key Generator</h2>
         <label for="keyname">Username for key:</label>
@@ -107,8 +117,9 @@
         <button class="button" onclick="generateKey()">Generate Private Key</button><br>
         <textarea id="privateKey" rows="4" cols="68" placeholder="Your private key will appear here..."></textarea>
         <br><button class="button" onclick="saveToFile()">Download key</button>
-        <br><button class="button" id="lsSave">Save key in browser localStorage</button>
-        <br><button class="button" id="lsClear">clear browser door localStorage</button>
+        <br><button class="button" id="lsSave">Save key in browser</button>
+        <br><button class="button" id="lsClear">clear key from browser</button>
+        <br><div id="qrcode"></div>
     </div>
   </div>
 
@@ -127,6 +138,16 @@
   let pubKey  = new Uint8Array(32);
   let nameKey = new Uint8Array(32);
   let challenge = new Uint8Array(8); 
+
+  // init qrcode
+  // https://github.com/kazuhikoarase/qrcode-generator/tree/master/js
+  
+
+  const queryString = window.location.search;
+  const urlParams = new URLSearchParams(queryString);
+  const qrcTransfer = urlParams.get('transfer');
+
+  // console.log(atob(qrcTransfer));
 
   // ------------------------------------------------
   // begin: init localStorage
@@ -162,7 +183,7 @@
 
   if (storageAvailable("localStorage")) {
     featureLocalStorageAvailable = true;
-    buttonLocalStorageSave.style.display = 'block';
+    buttonLocalStorageSave.style.display = 'inline-block';
     buttonLocalStorageSave.addEventListener("click", saveKeyInLocalStorage);
   }
 
@@ -177,11 +198,37 @@
     localStorageKeyDataAvailable = true;
     localStorageMyKey = localStorage.getItem("doorMyKey");
     buttonLocalStorageClear.addEventListener("click", clearKeyInLocalStorage);
-    buttonLocalStorageClear.style.display = 'block';
+    buttonLocalStorageClear.style.display = 'inline-block';
 
     let msg = decryptKey(localStorageMyKey);
     document.getElementById('fileContent').innerText = msg;
     document.getElementById('privateKey').value = localStorageMyKey;
+
+  
+    var typeNumber = 0;
+    var errorCorrectionLevel = 'L';
+    var qr = qrcode(typeNumber, errorCorrectionLevel);
+    let qrcodePayload = 'http://loungedoor?transfer='+btoa(localStorageMyKey);
+    qr.addData(qrcodePayload);
+    qr.make();
+    document.getElementById('qrcode').innerHTML = qr.createImgTag(4);
+  }
+
+  let qrcTransferStr = atob(qrcTransfer);
+  if(qrcTransferStr.length>100) {
+    let msg = decryptKey(qrcTransferStr);
+    document.getElementById('transferName').innerText = msg;
+    document.getElementById('privateKey').value = qrcTransferStr;
+
+    document.getElementById('cardTransferCode').style.display = 'block';
+
+    document.getElementById('cardOpenFile').style.display = 'none';
+    document.getElementById('cardSate').style.display = 'none';
+    document.getElementById('cardCommand').style.display = 'none';
+    document.getElementById('cardKeyGen').style.display = 'none';
+
+    document.getElementById('transfer').addEventListener("click", saveKeyInLocalStorage);
+    
   }
 
   console.log(localStorageMyKey);
@@ -189,16 +236,18 @@
   function saveKeyInLocalStorage() {
     let privateKey = document.getElementById('privateKey').value;
     localStorage.setItem("doorMyKey", privateKey);
+    window.open("/","_self");
   };
 
   function clearKeyInLocalStorage() {
     localStorage.clear();
+    window.open("/","_self");
   };
 
   // end: init localStorage
   // ------------------------------------------------
   
-
+  
   
   var protoTx = {
     'preambel'  : "D00r",
@@ -340,6 +389,11 @@
     }
     return msg;
   }
+
+  function showQRCode(content) {
+    qrcode.makeCode(content);
+  }
+
   function toggle(){
     if(websocket.readyState !== WebSocket.OPEN) {
       initWebSocket();
