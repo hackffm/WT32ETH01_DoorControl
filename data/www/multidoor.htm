@@ -126,7 +126,7 @@
   </div>
   <div class="content" id="cardDoorControl">
     <div class="card doorCard">
-      <h1>Haupteingang</h1>
+      <h1 id="doorName">Haupteingang</h1>
       <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(0)">OPEN</button>
         <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(0)">CLOSE</button></p>
     </div>
@@ -196,7 +196,23 @@
   let challenge = new Uint8Array(8); 
   let keyStatus = null;
 
-  const thisDoorID = 0;
+  console.log(window.location.hostname);
+
+  const doors = [];
+  doors[0] = {name:'Haupteingang', hostname:'maindoor', id:0, ws:'ws://maindoor/ws'}; 
+  doors[1] = {name:'Lounge', hostname:'loungedoor', id:1, ws:'ws://loungedoor/ws'}; 
+
+  let thisDoorID = 0;
+
+  doors.forEach((el) => {
+    if(el.hostname==window.location.hostname) {
+      thisDoorID = el.id;
+      document.getElementById("doorName").innerHTML = el.name;
+    }
+  });
+
+  console.log(thisDoorID);
+  
   let lastWSDoorRequest = -1;
   let gateways = [];
 
@@ -285,7 +301,7 @@
     var typeNumber = 0;
     var errorCorrectionLevel = 'L';
     var qr = qrcode(typeNumber, errorCorrectionLevel);
-    let qrcodePayload = 'http://loungedoor?transfer='+btoa(localStorageMyKey);
+    let qrcodePayload = 'http://'+window.Location.hostname+'?transfer='+btoa(localStorageMyKey);
     qr.addData(qrcodePayload);
     qr.make();
     document.getElementById('qrcode').innerHTML = qr.createImgTag(4);
