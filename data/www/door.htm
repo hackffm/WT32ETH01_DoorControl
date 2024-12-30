@@ -13,7 +13,7 @@
   }
   h1 {
     font-size: 1.8rem;
-    color: white;
+    color: rgb(50, 59, 66);
   }
   h2{
     font-size: 1.5rem;
@@ -72,20 +72,30 @@
    }
    .btnDoorOpen {
     width:100%;
-    padding: 50px 50px;
+    padding: 30px 10px 60px;
+    color: #8be38b;
     background-color: #00aa00;
     font-size: 30px;
     font-weight: bold;
     letter-spacing: .2rem;
+
+    border-radius: 30px 30px 5px 5px;
    }
 
    .btnDoorClose {
     width:100%;
-    padding: 30px 30px;
+    padding: 40px 10px 30px;
+    color: #e07777;
     background-color: #AA0000;
     font-size: 30px;
     font-weight: bold;
     letter-spacing: .2rem;
+
+    border-radius: 5px 5px 30px 30px;
+   }
+   .doorCard {
+    border-radius: 30px;
+    padding: 10px;
    }
    .state {
      font-size: 1.5rem;
@@ -107,9 +117,6 @@
 <link rel="icon" href="data:,">
 </head>
 <body>
-  <div class="topnav">
-    <h1>Door Lock Web Server</h1>
-  </div>
   <div class="content" id="cardTransferCode" style="display: none;">
     <div class="card" >
       <h2>Transfer Key</h2>
@@ -118,11 +125,10 @@
     </div>
   </div>
   <div class="content" id="cardDoorControl">
-    <div class="card">
-      <h2>door control</h2>
+    <div class="card doorCard">
+      <h1>Haupteingang</h1>
       <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor()">OPEN</button>
         <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor()">CLOSE</button></p>
-      <p></p>
     </div>
   </div>
   <div class="content" id="cardOpenFile">
@@ -353,6 +359,7 @@
       nextCommandAfterChallenge = null;
     }
     websocket.send(protoTx.txData);
+    // websocket.close();
   }
   
   function txCommand(command) {
