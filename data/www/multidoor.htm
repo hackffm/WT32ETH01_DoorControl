@@ -1,0 +1,620 @@
+<!DOCTYPE HTML><html>
+<head>
+  <title>Door Lock Web Serverr</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <script type="text/javascript" src="/scripts/qrcode.js"></script>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+  html {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+  }
+  h1 {
+    font-size: 1.8rem;
+    color: rgb(50, 59, 66);
+  }
+  h2{
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #143642;
+  }
+  .topnav {
+    overflow: hidden;
+    background-color: #143642;
+  }
+  body {
+    margin: 0;
+  }
+  .content {
+    padding: 30px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
+    padding-left: 4vh;
+    padding-right: 4vh;
+  }
+  .button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+    margin-top: 10px;
+    margin-bottom: 10px;
+   }
+
+   /*.button:hover {background-color: #0f8b8d}*/
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+
+   .button:disabled {
+    background-color: #aaaaaa;
+   }
+   .btnDoorOpen {
+    width:100%;
+    padding: 30px 10px 60px;
+    color: #8be38b;
+    background-color: #00aa00;
+    font-size: 40px;
+    font-weight: bold;
+    letter-spacing: .2rem;
+
+    border-radius: 30px 30px 5px 5px;
+   }
+
+   .btnDoorClose {
+    width:100%;
+    padding: 40px 10px 30px;
+    color: #e07777;
+    background-color: #AA0000;
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: .2rem;
+
+    border-radius: 5px 5px 30px 30px;
+   }
+   .doorCard {
+    border-radius: 30px;
+    padding: 10px;
+   }
+   .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+   #privateKey {
+    max-width: 80%;
+    overflow:scroll;
+    font-size: 16px;
+   }
+   .formInput {
+    font-size: 16px;
+   }
+  </style>
+  
+<title>ESP Web Server</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+</head>
+<body>
+  <div class="content" id="cardTransferCode" style="display: none;">
+    <div class="card" >
+      <h2>Transfer Key</h2>
+      <p class="state" id="transferName">...</p>
+      <button class="button" id="transfer">Save key in browser</button>
+    </div>
+  </div>
+  <div class="content" id="cardDoorControl">
+    <div class="card doorCard">
+      <h1>Haupteingang</h1>
+      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(0)">OPEN</button>
+        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(0)">CLOSE</button></p>
+    </div>
+  </div>
+  <div class="content" id="cardDoorControl">
+    <div class="card doorCard">
+      <h1>Lounge</h1>
+      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(1)">OPEN</button>
+        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(1)">CLOSE</button></p>
+    </div>
+  </div>
+  <div class="content" id="cardOpenFile">
+    <div class="card">
+      <h2>Key file</h2>
+      <p class="state">file loaded: <span id="stateFile">-</span></p>
+      <p><button id="buttonFile" class="button">Open...</button></p>
+      <p class="state" id="fileContent">Dateiinhalt wird hier angezeigt...</p>
+    </div>
+  </div>
+  <div class="content" id="cardSate">
+    <div class="card">
+      <h2>Output - GPIO 2</h2>
+      <p class="state">state: <span id="state">%STATE%</span></p>
+      <p><button id="button" class="button">Toggle</button></p>
+    </div>
+  </div>
+  <div class="content" id="cardCommand">
+    <div class="card">
+      <h2>Send Command</h2>
+        <label for="labelCommand">Command:</label>
+        <input type="text" id="textCommand" value="c" class="formInput"><br>
+        <p class="state">Challenge: <span id="answerChallenge">-</span></p>
+        <p class="state">Reply: <span id="answerCommand">Answer</span></p>
+      <p><button id="buttonTxCommand" onclick="butTxCommand()" class="button">Send</button></p>
+    </div>
+  </div>  
+  <div class="content" id="cardKeyGen">
+     <div class="card">
+        <h2>ED25519 Private Key Generator</h2>
+        <label for="keyname">Username for key:</label>
+        <input type="text" id="keyname" value="Your Name" class="formInput"><br><br>
+        <button id="btnGenerateKey" class="button" onclick="generateKey()">Generate Private Key</button><br>
+        <textarea id="privateKey" rows="4" cols="68" wrap="soft" placeholder="Your private key will appear here..."></textarea>
+        <br><button class="button" onclick="saveToFile()">Download key</button>
+        <br><button class="button" id="lsSave">Save key in browser</button>
+        <br><button class="button" id="lsClear">clear key from browser</button>
+        <br><div id="qrcode"></div>
+
+        <a href="doorQRCode.htm">doorQRCode.htm</a>
+    </div>
+  </div>
+
+    <script src="scripts/nacl.min.js"></script>
+<script>
+
+  var gateway = `ws://${window.location.hostname}/ws`;
+  let websocket = [];
+  let fileContent = '';
+  window.addEventListener('load', onLoad);
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.style.display = 'none';  
+  document.body.appendChild(fileInput);
+  let privKey = new Uint8Array(64);
+  let pubKey  = new Uint8Array(32);
+  let nameKey = new Uint8Array(32);
+  let challenge = new Uint8Array(8); 
+  let keyStatus = null;
+
+  const thisDoorID = 0;
+  let lastWSDoorRequest = -1;
+  let gateways = [];
+
+  // gateways[0] = gateway;
+  gateways[0] = 'ws://maindoor/ws';
+  gateways[1] = 'ws://loungedoor/ws';
+
+  // init qrcode
+  // https://github.com/kazuhikoarase/qrcode-generator/tree/master/js
+
+  websocket[0] = null;
+  websocket[1] = null;
+  
+
+  const queryString = window.location.search;
+  const urlParams = new URLSearchParams(queryString);
+  const qrcTransfer = urlParams.get('transfer');
+
+  // console.log(atob(qrcTransfer));
+
+  // ------------------------------------------------
+  // begin: init localStorage
+
+  const buttonLocalStorageSave = document.getElementById('lsSave');
+  const buttonLocalStorageClear = document.getElementById('lsClear');
+
+  buttonLocalStorageSave.style.display = 'none';
+  buttonLocalStorageClear.style.display = 'none';
+
+  let nextCommandAfterChallenge = null;
+  
+
+  // check if localstorage is available
+  function storageAvailable(type) {
+    let storage;
+    try {
+      storage = window[type];
+      const x = "__storage_test__";
+      storage.setItem(x, x);
+      storage.removeItem(x);
+      return true;
+    } catch (e) {
+      return (
+        e instanceof DOMException &&
+        e.name === "QuotaExceededError" &&
+        // acknowledge QuotaExceededError only if there's something already stored
+        storage &&
+        storage.length !== 0
+      );
+    }
+  }
+
+  let featureLocalStorageAvailable = false;
+
+  if (storageAvailable("localStorage")) {
+    featureLocalStorageAvailable = true;
+    buttonLocalStorageSave.style.display = 'inline-block';
+    buttonLocalStorageSave.addEventListener("click", saveKeyInLocalStorage);
+  }
+
+  console.log(featureLocalStorageAvailable);
+
+  // if localStorage with my key is available 
+  let localStorageKeyDataAvailable = false;
+  let localStorageMyKey = null;
+
+  localStorageMyKey = localStorage.getItem("doorMyKey");
+  document.getElementById('cardDoorControl').style.display = 'none';
+
+  if (localStorageMyKey!=null) {
+    localStorageKeyDataAvailable = true;
+    localStorageMyKey = localStorage.getItem("doorMyKey");
+    buttonLocalStorageClear.addEventListener("click", clearKeyInLocalStorage);
+    buttonLocalStorageClear.style.display = 'inline-block';
+
+    let msg = decryptKey(localStorageMyKey);
+    document.getElementById('fileContent').innerText = msg;
+    document.getElementById('keyname').value = msg;
+    document.getElementById('privateKey').value = localStorageMyKey;
+    console.log(msg);
+    if(keyStatus==1) {
+      document.getElementById('cardDoorControl').style.display = 'block';
+    }
+
+  
+    var typeNumber = 0;
+    var errorCorrectionLevel = 'L';
+    var qr = qrcode(typeNumber, errorCorrectionLevel);
+    let qrcodePayload = 'http://loungedoor?transfer='+btoa(localStorageMyKey);
+    qr.addData(qrcodePayload);
+    qr.make();
+    document.getElementById('qrcode').innerHTML = qr.createImgTag(4);
+
+    document.getElementById('cardOpenFile').style.display = 'none';
+    document.getElementById('btnGenerateKey').style.display = 'none';
+  }
+
+  let qrcTransferStr = atob(qrcTransfer);
+  if(qrcTransferStr.length>100) {
+    let msg = decryptKey(qrcTransferStr);
+    document.getElementById('transferName').innerText = msg;
+    document.getElementById('privateKey').value = qrcTransferStr;
+
+    document.getElementById('cardTransferCode').style.display = 'block';
+
+    document.getElementById('cardOpenFile').style.display = 'none';
+    document.getElementById('cardSate').style.display = 'none';
+    document.getElementById('cardCommand').style.display = 'none';
+    document.getElementById('cardKeyGen').style.display = 'none';
+
+    document.getElementById('transfer').addEventListener("click", saveKeyInLocalStorage);
+    
+  }
+
+  function saveKeyInLocalStorage() {
+    let privateKey = document.getElementById('privateKey').value;
+    localStorage.setItem("doorMyKey", privateKey);
+    window.open("/","_self");
+  };
+
+  function clearKeyInLocalStorage() {
+    localStorage.clear();
+    window.open("/","_self");
+  };
+
+  // end: init localStorage
+  // ------------------------------------------------
+  
+  
+  
+  var protoTx = {
+    'preambel'  : "D00r",
+    'signatur'  : new Uint8Array(64),
+    'pubKey'    : "Doe",
+    'name'      : "default name",
+    'challenge' : new Uint8Array(8),
+    'command'   : "t",
+    'txData'    : new Uint8Array(4+64+32+32+8+70),
+  };
+
+  function openDoor(doorID) {
+    lockDoorControlButtons();
+    nextCommandAfterChallenge = 'O';
+    lastWSDoorRequest = doorID;
+    sendCommand('c',false,doorID);
+  }
+
+  function closeDoor(doorID) {
+    lockDoorControlButtons();
+    nextCommandAfterChallenge = 'C';
+    lastWSDoorRequest = doorID;
+    sendCommand('c',false,doorID);
+  }
+
+  function lockDoorControlButtons() {
+    let btnsOpenDoor = document.getElementsByClassName('btnDoorOpen');
+    let btnsCloseDoor = document.getElementsByClassName('btnDoorClose');
+    for(let i=0; i<btnsOpenDoor.length; i++) { 
+      btnsOpenDoor[i].disabled = true;
+      btnsCloseDoor[i].disabled = true;
+    }
+    console.log("lock door control buttons");
+    setTimeout(() => {
+      for(let i=0; i<btnsOpenDoor.length; i++) { 
+        btnsOpenDoor[i].disabled = false;
+        btnsCloseDoor[i].disabled = false;
+      }
+      console.log("release door control buttons");
+    }, "7000");
+  }
+  
+  function butTxCommand() {
+    let cmd = document.getElementById('textCommand').value;
+    lastWSDoorRequest = thisDoorID;
+    sendCommand(cmd,true,thisDoorID);
+    document.getElementById('answerCommand').innerText = protoTx.txData;    
+  }
+  
+  function sendCommand(send_cmd,resetNextCommand=false, doorID) {
+    txCommand(send_cmd);
+    
+
+    initWebSocket();
+    if(resetNextCommand) {
+      nextCommandAfterChallenge = null;
+    }
+    websocket[doorID].send(protoTx.txData);
+    // websocket.close();
+  }
+  
+  function txCommand(command) {
+    protoTx.preambel  = utf8ToBytes("D00r", 4);
+    protoTx.pubKey    = pubKey;
+    protoTx.name      = nameKey;
+    protoTx.challenge = challenge;
+    protoTx.command   = utf8ToBytes(command, 4);
+    let message = new Uint8Array(32+32+8+protoTx.command.length);
+    message.set(protoTx.pubKey);
+    message.set(protoTx.name, 32);
+    message.set(protoTx.challenge, 32+32);
+    message.set(protoTx.command, 32+32+8);
+    protoTx.signatur  = nacl.sign.detached(message, privKey);
+    let data = new Uint8Array(4+64+message.length);
+    data.set(protoTx.preambel);
+    data.set(protoTx.signatur, 4);
+    data.set(message, 4+64);
+    protoTx.txData    = data;
+  }
+
+  function rxCommand(rx) {
+    if(rx.length >= (4+32+8+1)) {
+      // 68,48,48,97 = D00a
+      if((rx[0] == 68) && (rx[1] == 48) && (rx[2] == 48) && (rx[3] == 97)) {
+        challenge.set(rx.slice(4+32, 4+32+8));
+        // optional: check if same pubkey
+
+        let answer = new Uint8Array(rx.length - (4+32+8));
+        answer.set(rx.slice(4+32+8, rx.length));
+       
+        document.getElementById('answerChallenge').innerText = challenge;
+        document.getElementById('answerCommand').innerText = utf8bytesToString(answer);
+      }
+    }  
+  }
+
+  function initWebSocket() {
+    gateways.forEach((element,index) => {
+      if(websocket[index]==null || websocket[index].readyState !== WebSocket.OPEN) {
+        console.log('Trying to open a WebSocket connection...');
+        websocket[index] = new WebSocket(gateways[index]);
+        websocket[index].onopen    = onOpen;
+        websocket[index].onclose   = onClose;
+        websocket[index].onmessage = onMessage; // <-- add this line  
+      }
+      
+    }
+  );
+    
+  }
+  function onOpen(event) {
+    console.log('Connection opened');
+  }
+  function onClose(event) {
+    console.log('Connection closed');
+    setTimeout(initWebSocket, 2000);
+  }
+  function onMessage(event) {
+    var state;
+    if (event.data == "1"){
+      state = "ON";
+    }
+    else{
+      state = "OFF";
+    }
+    document.getElementById('state').innerHTML = state;
+    if (event.data instanceof Blob) {
+      onBlob(event.data);
+    }     
+  }
+  function onBlob(blob) {
+    blob.arrayBuffer().then(buffer => {
+      const msgdata = new Uint8Array(buffer);
+      
+      rxCommand(msgdata);
+
+      if(nextCommandAfterChallenge!=null) {
+        sendCommand(nextCommandAfterChallenge,true,lastWSDoorRequest);
+      }
+    });
+  }
+  function onLoad(event) {
+    initWebSocket();
+    initButtons();
+  }
+  function initButtons() {
+    document.getElementById('button').addEventListener('click', toggle);
+    document.getElementById('buttonFile').addEventListener('click', function() {
+        fileInput.click(); 
+    });
+    fileInput.addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            fileContent = e.target.result;  // Dateiinhalt in die Variable ablegen
+            let msg = decryptKey(fileContent);
+            document.getElementById('fileContent').innerText = msg;  
+        };
+        document.getElementById('stateFile').innerText = file.name;
+        reader.readAsText(file);  // Datei als Text lesen
+        }
+    });
+  }
+
+  function decryptKey(key) {
+    let msg = "";
+    keyStatus = -1; // invalid Key
+    const parse1 = hexToBytes(key);
+    // check if key is valid
+    if(parse1.length == 96) {
+      const privFromFile = parse1.slice(0, 32);
+      const pubFromFile  = parse1.slice(32, 64);
+      const pubFromPriv  = nacl.sign.keyPair.fromSeed(privFromFile);
+      if(compareUint8Arrays(pubFromFile, pubFromPriv.publicKey)) {
+        msg = "";
+        privKey = pubFromPriv.secretKey;
+        pubKey  = pubFromPriv.publicKey;
+        nameKey = parse1.slice(64, 96);
+        const decoder = new TextDecoder('utf-8');
+        const nameKeyUtf8 = decoder.decode(nameKey);
+        msg += nameKeyUtf8;
+        keyStatus = 1; // valid key
+      } else {
+        msg = "";
+        keyStatus = -2; // Pub key does not fit to priv key 
+      }
+      //msg += bufferToHex(privKey) + "\r" + bufferToHex(pubKey) 
+      //  + "\r" + bufferToHex(nameKey); 
+    }
+    return msg;
+  }
+
+  function showQRCode(content) {
+    qrcode.makeCode(content);
+  }
+
+  function toggle(doorID){
+    if(websocket[doorID].readyState !== WebSocket.OPEN) {
+      initWebSocket();
+    }
+    websocket[doorID].send('toggle');
+  }
+  function butFile(){
+
+  }
+  
+  function generateKey() {
+      // Generate ED25519 keypair
+      const keyPair = nacl.sign.keyPair();
+      
+      // Extract the private key (first 32 bytes)
+      const  privateKeyHex = bufferToHex(keyPair.secretKey.slice(0, 32));
+      const publicKeyHex = bufferToHex(keyPair.secretKey.slice(32, 64));
+      const keyNameHex = utf8ToHex(document.getElementById("keyname").value);
+      let keytext = privateKeyHex + "\r" + publicKeyHex + "\r" + keyNameHex;
+
+      document.getElementById("privateKey").value = keytext;
+  }
+
+  function compareUint8Arrays(arr1, arr2) {
+    if (arr1.length != arr2.length) {
+      return false;
+    }
+    for (let i = 0; i < arr1.length; i++) {
+      if (arr1[i] != arr2[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function utf8bytesToString(byteArray) {
+    const decoder = new TextDecoder('utf-8');
+    return decoder.decode(new Uint8Array(byteArray));
+  }
+
+  // rest of array is filled with 0
+  function utf8ToBytes(str, minLen) {
+    let paddedUtf8 = new Uint8Array(minLen);
+    let utf8 = new TextEncoder().encode(str); 
+    paddedUtf8.set(utf8); // set orig bytes
+    return paddedUtf8;
+  }   
+
+  function utf8ToHex(str) {
+      let utf8 = new TextEncoder().encode(str); 
+      let hexStr = '';
+      const maxLength = 32; // need exact 32 bytes, fill with 0 and truncate
+      if (utf8.length < maxLength) {
+          let paddedUtf8 = new Uint8Array(maxLength);
+          paddedUtf8.set(utf8); // set orig bytes
+          utf8 = paddedUtf8; // copy back
+      }
+      // Truncate
+      utf8 = utf8.slice(0, maxLength);
+      utf8.forEach(byte => {
+          hexStr += byte.toString(16).padStart(2, '0'); 
+      });
+      return hexStr;
+  }
+
+  // Function to convert buffer to hex string
+  function bufferToHex(buffer) {
+      return Array.from(buffer)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+  }
+
+  function saveToFile() {
+    const hexOutput = document.getElementById('privateKey').value;
+    const blob = new Blob([hexOutput], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'key_' + document.getElementById("keyname").value + '_hackffm.txt';
+    link.click();
+  }
+
+  function hexToBytes(hexString) {
+    hexString = hexString.replace(/[^0-9a-fA-F]/g, '');
+    if (hexString.length % 2 !== 0) {
+        hexString = hexString.slice(0, -1);
+    }
+    const byteArray = new Uint8Array(hexString.length / 2);
+    for (let i = 0; i < hexString.length; i += 2) {
+        byteArray[i / 2] = parseInt(hexString.substr(i, 2), 16);
+    }
+    return byteArray;
+  }
+</script>
+</body>
+</html>
