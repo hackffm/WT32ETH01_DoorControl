@@ -1,10 +1,11 @@
 <!DOCTYPE HTML><html>
 <head>
   <title>Door Lock Web Serverr</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
   <link rel="icon" href="/favicon.ico" type="image/x-icon">
   <script type="text/javascript" src="/scripts/qrcode.js"></script>
+  <link rel="manifest" href="manifest.json" />
   <style>
   html {
     font-family: Arial, Helvetica, sans-serif;
@@ -36,6 +37,8 @@
     box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
     padding-top:10px;
     padding-bottom:20px;
+    padding-left: 4vh;
+    padding-right: 4vh;
   }
   .button {
     padding: 15px 50px;
@@ -56,16 +59,46 @@
     margin-top: 10px;
     margin-bottom: 10px;
    }
+
    /*.button:hover {background-color: #0f8b8d}*/
    .button:active {
      background-color: #0f8b8d;
      box-shadow: 2 2px #CDCDCD;
      transform: translateY(2px);
    }
+
+   .button:disabled {
+    background-color: #aaaaaa;
+   }
+   .btnDoorOpen {
+    width:100%;
+    padding: 50px 50px;
+    background-color: #00aa00;
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: .2rem;
+   }
+
+   .btnDoorClose {
+    width:100%;
+    padding: 30px 30px;
+    background-color: #AA0000;
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: .2rem;
+   }
    .state {
      font-size: 1.5rem;
      color:#8c8c8c;
      font-weight: bold;
+   }
+   #privateKey {
+    max-width: 80%;
+    overflow:scroll;
+    font-size: 16px;
+   }
+   .formInput {
+    font-size: 16px;
    }
   </style>
   
@@ -82,6 +115,14 @@
       <h2>Transfer Key</h2>
       <p class="state" id="transferName">...</p>
       <button class="button" id="transfer">Save key in browser</button>
+    </div>
+  </div>
+  <div class="content" id="cardDoorControl">
+    <div class="card">
+      <h2>door control</h2>
+      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor()">OPEN</button>
+        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor()">CLOSE</button></p>
+      <p></p>
     </div>
   </div>
   <div class="content" id="cardOpenFile">
@@ -103,7 +144,7 @@
     <div class="card">
       <h2>Send Command</h2>
         <label for="labelCommand">Command:</label>
-        <input type="text" id="textCommand" value="c"><br>
+        <input type="text" id="textCommand" value="c" class="formInput"><br>
         <p class="state">Challenge: <span id="answerChallenge">-</span></p>
         <p class="state">Reply: <span id="answerCommand">Answer</span></p>
       <p><button id="buttonTxCommand" onclick="butTxCommand()" class="button">Send</button></p>
@@ -113,13 +154,15 @@
      <div class="card">
         <h2>ED25519 Private Key Generator</h2>
         <label for="keyname">Username for key:</label>
-        <input type="text" id="keyname" value="Your Name"><br><br>
-        <button class="button" onclick="generateKey()">Generate Private Key</button><br>
-        <textarea id="privateKey" rows="4" cols="68" placeholder="Your private key will appear here..."></textarea>
+        <input type="text" id="keyname" value="Your Name" class="formInput"><br><br>
+        <button id="btnGenerateKey" class="button" onclick="generateKey()">Generate Private Key</button><br>
+        <textarea id="privateKey" rows="4" cols="68" wrap="soft" placeholder="Your private key will appear here..."></textarea>
         <br><button class="button" onclick="saveToFile()">Download key</button>
         <br><button class="button" id="lsSave">Save key in browser</button>
         <br><button class="button" id="lsClear">clear key from browser</button>
         <br><div id="qrcode"></div>
+
+        <a href="doorQRCode.htm">doorQRCode.htm</a>
     </div>
   </div>
 
@@ -138,6 +181,7 @@
   let pubKey  = new Uint8Array(32);
   let nameKey = new Uint8Array(32);
   let challenge = new Uint8Array(8); 
+  let keyStatus = null;
 
   // init qrcode
   // https://github.com/kazuhikoarase/qrcode-generator/tree/master/js
@@ -157,6 +201,8 @@
 
   buttonLocalStorageSave.style.display = 'none';
   buttonLocalStorageClear.style.display = 'none';
+
+  let nextCommandAfterChallenge = null;
   
 
   // check if localstorage is available
@@ -194,6 +240,8 @@
   let localStorageMyKey = null;
 
   localStorageMyKey = localStorage.getItem("doorMyKey");
+  document.getElementById('cardDoorControl').style.display = 'none';
+
   if (localStorageMyKey!=null) {
     localStorageKeyDataAvailable = true;
     localStorageMyKey = localStorage.getItem("doorMyKey");
@@ -202,7 +250,12 @@
 
     let msg = decryptKey(localStorageMyKey);
     document.getElementById('fileContent').innerText = msg;
+    document.getElementById('keyname').value = msg;
     document.getElementById('privateKey').value = localStorageMyKey;
+    console.log(msg);
+    if(keyStatus==1) {
+      document.getElementById('cardDoorControl').style.display = 'block';
+    }
 
   
     var typeNumber = 0;
@@ -212,6 +265,9 @@
     qr.addData(qrcodePayload);
     qr.make();
     document.getElementById('qrcode').innerHTML = qr.createImgTag(4);
+
+    document.getElementById('cardOpenFile').style.display = 'none';
+    document.getElementById('btnGenerateKey').style.display = 'none';
   }
 
   let qrcTransferStr = atob(qrcTransfer);
@@ -258,6 +314,29 @@
     'command'   : "t",
     'txData'    : new Uint8Array(4+64+32+32+8+70),
   };
+
+  function openDoor() {
+    lockDoorControlButtons();
+    nextCommandAfterChallenge = 'O';
+    sendCommand('c');
+  }
+
+  function closeDoor() {
+    lockDoorControlButtons();
+    nextCommandAfterChallenge = 'C';
+    sendCommand('c');
+  }
+
+  function lockDoorControlButtons() {
+    document.getElementById('buttonDoorOpen').disabled = true;
+    document.getElementById('buttonDoorClose').disabled = true;
+    console.log("lock door control buttons");
+    setTimeout(() => {
+      document.getElementById('buttonDoorOpen').disabled = false;
+      document.getElementById('buttonDoorClose').disabled = false;
+      console.log("release door control buttons");
+    }, "5000");
+  }
   
   function butTxCommand() {
     let cmd = document.getElementById('textCommand').value;
@@ -265,10 +344,13 @@
     document.getElementById('answerCommand').innerText = protoTx.txData;    
   }
   
-  function sendCommand(send_cmd) {
+  function sendCommand(send_cmd,resetNextCommand=false) {
     txCommand(send_cmd);
     if(websocket.readyState !== WebSocket.OPEN) {
       initWebSocket();
+    }
+    if(resetNextCommand) {
+      nextCommandAfterChallenge = null;
     }
     websocket.send(protoTx.txData);
   }
@@ -336,9 +418,15 @@
     }     
   }
   function onBlob(blob) {
+    console.log(blob);
     blob.arrayBuffer().then(buffer => {
       const msgdata = new Uint8Array(buffer);
+      
       rxCommand(msgdata);
+
+      if(nextCommandAfterChallenge!=null) {
+        sendCommand(nextCommandAfterChallenge,true);
+      }
     });
   }
   function onLoad(event) {
@@ -366,7 +454,8 @@
   }
 
   function decryptKey(key) {
-    let msg = "Invalid key";
+    let msg = "";
+    keyStatus = -1; // invalid Key
     const parse1 = hexToBytes(key);
     // check if key is valid
     if(parse1.length == 96) {
@@ -374,15 +463,17 @@
       const pubFromFile  = parse1.slice(32, 64);
       const pubFromPriv  = nacl.sign.keyPair.fromSeed(privFromFile);
       if(compareUint8Arrays(pubFromFile, pubFromPriv.publicKey)) {
-        msg = "Key opened: ";
+        msg = "";
         privKey = pubFromPriv.secretKey;
         pubKey  = pubFromPriv.publicKey;
         nameKey = parse1.slice(64, 96);
         const decoder = new TextDecoder('utf-8');
         const nameKeyUtf8 = decoder.decode(nameKey);
         msg += nameKeyUtf8;
+        keyStatus = 1; // valid key
       } else {
-        msg = "Pub key does not fit to priv key ";
+        msg = "";
+        keyStatus = -2; // Pub key does not fit to priv key 
       }
       //msg += bufferToHex(privKey) + "\r" + bufferToHex(pubKey) 
       //  + "\r" + bufferToHex(nameKey); 
