@@ -75,7 +75,7 @@
     padding: 30px 10px 60px;
     color: #8be38b;
     background-color: #00aa00;
-    font-size: 30px;
+    font-size: 40px;
     font-weight: bold;
     letter-spacing: .2rem;
 
@@ -126,9 +126,16 @@
   </div>
   <div class="content" id="cardDoorControl">
     <div class="card doorCard">
-      <h1>Haupteingang</h1>
-      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor()">OPEN</button>
-        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor()">CLOSE</button></p>
+      <h1 id="doorName">Haupteingang</h1>
+      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(0)">OPEN</button>
+        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(0)">CLOSE</button></p>
+    </div>
+  </div>
+  <div class="content" id="cardDoorControl">
+    <div class="card doorCard">
+      <h1>Lounge</h1>
+      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(1)">OPEN</button>
+        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(1)">CLOSE</button></p>
     </div>
   </div>
   <div class="content" id="cardOpenFile">
@@ -176,7 +183,7 @@
 <script>
 
   var gateway = `ws://${window.location.hostname}/ws`;
-  var websocket;
+  let websocket = [];
   let fileContent = '';
   window.addEventListener('load', onLoad);
   const fileInput = document.createElement('input');
@@ -189,8 +196,35 @@
   let challenge = new Uint8Array(8); 
   let keyStatus = null;
 
+  console.log(window.location.hostname);
+
+  const doors = [];
+  doors[0] = {name:'Haupteingang', hostname:'maindoor', id:0, ws:'ws://maindoor/ws'}; 
+  doors[1] = {name:'Lounge', hostname:'loungedoor', id:1, ws:'ws://loungedoor/ws'}; 
+
+  let thisDoorID = 0;
+
+  doors.forEach((el) => {
+    if(el.hostname==window.location.hostname) {
+      thisDoorID = el.id;
+      document.getElementById("doorName").innerHTML = el.name;
+    }
+  });
+
+  console.log(thisDoorID);
+  
+  let lastWSDoorRequest = -1;
+  let gateways = [];
+
+  // gateways[0] = gateway;
+  gateways[0] = 'ws://maindoor/ws';
+  gateways[1] = 'ws://loungedoor/ws';
+
   // init qrcode
   // https://github.com/kazuhikoarase/qrcode-generator/tree/master/js
+
+  websocket[0] = null;
+  websocket[1] = null;
   
 
   const queryString = window.location.search;
@@ -267,7 +301,7 @@
     var typeNumber = 0;
     var errorCorrectionLevel = 'L';
     var qr = qrcode(typeNumber, errorCorrectionLevel);
-    let qrcodePayload = 'http://loungedoor?transfer='+btoa(localStorageMyKey);
+    let qrcodePayload = 'http://'+window.Location.hostname+'?transfer='+btoa(localStorageMyKey);
     qr.addData(qrcodePayload);
     qr.make();
     document.getElementById('qrcode').innerHTML = qr.createImgTag(4);
@@ -292,8 +326,6 @@
     document.getElementById('transfer').addEventListener("click", saveKeyInLocalStorage);
     
   }
-
-  console.log(localStorageMyKey);
 
   function saveKeyInLocalStorage() {
     let privateKey = document.getElementById('privateKey').value;
@@ -321,44 +353,53 @@
     'txData'    : new Uint8Array(4+64+32+32+8+70),
   };
 
-  function openDoor() {
+  function openDoor(doorID) {
     lockDoorControlButtons();
     nextCommandAfterChallenge = 'O';
-    sendCommand('c');
+    lastWSDoorRequest = doorID;
+    sendCommand('c',false,doorID);
   }
 
-  function closeDoor() {
+  function closeDoor(doorID) {
     lockDoorControlButtons();
     nextCommandAfterChallenge = 'C';
-    sendCommand('c');
+    lastWSDoorRequest = doorID;
+    sendCommand('c',false,doorID);
   }
 
   function lockDoorControlButtons() {
-    document.getElementById('buttonDoorOpen').disabled = true;
-    document.getElementById('buttonDoorClose').disabled = true;
+    let btnsOpenDoor = document.getElementsByClassName('btnDoorOpen');
+    let btnsCloseDoor = document.getElementsByClassName('btnDoorClose');
+    for(let i=0; i<btnsOpenDoor.length; i++) { 
+      btnsOpenDoor[i].disabled = true;
+      btnsCloseDoor[i].disabled = true;
+    }
     console.log("lock door control buttons");
     setTimeout(() => {
-      document.getElementById('buttonDoorOpen').disabled = false;
-      document.getElementById('buttonDoorClose').disabled = false;
+      for(let i=0; i<btnsOpenDoor.length; i++) { 
+        btnsOpenDoor[i].disabled = false;
+        btnsCloseDoor[i].disabled = false;
+      }
       console.log("release door control buttons");
-    }, "5000");
+    }, "7000");
   }
   
   function butTxCommand() {
     let cmd = document.getElementById('textCommand').value;
-    sendCommand(cmd);
+    lastWSDoorRequest = thisDoorID;
+    sendCommand(cmd,true,thisDoorID);
     document.getElementById('answerCommand').innerText = protoTx.txData;    
   }
   
-  function sendCommand(send_cmd,resetNextCommand=false) {
+  function sendCommand(send_cmd,resetNextCommand=false, doorID) {
     txCommand(send_cmd);
-    if(websocket.readyState !== WebSocket.OPEN) {
-      initWebSocket();
-    }
+    
+
+    initWebSocket();
     if(resetNextCommand) {
       nextCommandAfterChallenge = null;
     }
-    websocket.send(protoTx.txData);
+    websocket[doorID].send(protoTx.txData);
     // websocket.close();
   }
   
@@ -398,11 +439,18 @@
   }
 
   function initWebSocket() {
-    console.log('Trying to open a WebSocket connection...');
-    websocket = new WebSocket(gateway);
-    websocket.onopen    = onOpen;
-    websocket.onclose   = onClose;
-    websocket.onmessage = onMessage; // <-- add this line
+    gateways.forEach((element,index) => {
+      if(websocket[index]==null || websocket[index].readyState !== WebSocket.OPEN) {
+        console.log('Trying to open a WebSocket connection...');
+        websocket[index] = new WebSocket(gateways[index]);
+        websocket[index].onopen    = onOpen;
+        websocket[index].onclose   = onClose;
+        websocket[index].onmessage = onMessage; // <-- add this line  
+      }
+      
+    }
+  );
+    
   }
   function onOpen(event) {
     console.log('Connection opened');
@@ -425,14 +473,13 @@
     }     
   }
   function onBlob(blob) {
-    console.log(blob);
     blob.arrayBuffer().then(buffer => {
       const msgdata = new Uint8Array(buffer);
       
       rxCommand(msgdata);
 
       if(nextCommandAfterChallenge!=null) {
-        sendCommand(nextCommandAfterChallenge,true);
+        sendCommand(nextCommandAfterChallenge,true,lastWSDoorRequest);
       }
     });
   }
@@ -492,11 +539,11 @@
     qrcode.makeCode(content);
   }
 
-  function toggle(){
-    if(websocket.readyState !== WebSocket.OPEN) {
+  function toggle(doorID){
+    if(websocket[doorID].readyState !== WebSocket.OPEN) {
       initWebSocket();
     }
-    websocket.send('toggle');
+    websocket[doorID].send('toggle');
   }
   function butFile(){
 
