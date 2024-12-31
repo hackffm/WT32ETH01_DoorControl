@@ -21,6 +21,8 @@
 
 extern bool debugUnlocked;
 
+bool addAllUnknownUsers = false;
+
 const int maxChallenges = 8;
 const uint32_t maxChallengeLife = 120000; // 2min
 
@@ -186,14 +188,25 @@ bool protocolInput(uint8_t *data, size_t len, uint8_t *answer, size_t *anslen, i
           // If unkonwn user sends 't' it get temporarily stored for review
           memcpy(lastUnknownPublicKey, publicKey, 32);
           memcpy(lastUnknownName, name, 32);
-
         }  
         *anslen += sprintf((char *)&answer[45], " User not found!");
+        if(addAllUnknownUsers == true) {
+          UserDB.addUser(msg.c_str(), (const char *)name, "");
+          UserDB.saveUserData();
+          LL_Log.println(" User auto added.");
+        }
       } else {
         if(challengeValid) {
           // All others must be in database and need enough rights
-          // tCOUR
-          if((command[0] == 't') && (userFlags.indexOf('t') != -1)) {
+          // stCOURaA
+          if((command[0] == 's') && (userFlags.indexOf('s') != -1)) {
+            answer[44] = 's'; 
+            answer[45] = (uint8_t)('0' + doorGetDoorState()); 
+            answer[46] = (uint8_t)('0' + doorGetLockState()); 
+            answer[47] = (uint8_t)('0' + doorGetTrigState()); 
+            answer[48] = 0; *anslen = 48;
+            LL_Log.printf(" Get Status: %s\r\n", (const char *)&answer[45]);
+          } else if((command[0] == 't') && (userFlags.indexOf('t') != -1)) {
             answer[44] = 't';
             LL_Log.println(" Triggered.");
             doorAction(1); // 2
@@ -215,6 +228,16 @@ bool protocolInput(uint8_t *data, size_t len, uint8_t *answer, size_t *anslen, i
             answer[44] = 'R';
             ESP.restart();
             // will this here still reached?
+          } else if((command[0] == 'a') && (userFlags.indexOf('a') != -1)) {
+            answer[44] = 'a';
+            LL_Log.println(" Stop adding all unknown users.");
+            *anslen += sprintf((char *)&answer[45], " Stop adding all unknown users.");
+            addAllUnknownUsers = false;      
+          } else if((command[0] == 'A') && (userFlags.indexOf('A') != -1)) {
+            answer[44] = 'A';
+            LL_Log.println(" Add all unknown users.");
+            *anslen += sprintf((char *)&answer[45], " Add all unknown users.");
+            addAllUnknownUsers = true;         
           } else {
             *anslen += sprintf((char *)&answer[45], " Not enough rights!");
           }

@@ -96,7 +96,7 @@ elapsedMillis WaitForDoorClosingDelay;
 
 uint8_t doorGetDoorState() { return doorState; }
 uint8_t doorGetLockState() { return lockState; }
-uint8_t doorGettrigState() { return trigState; }
+uint8_t doorGetTrigState() { return trigState; }
 
 
 void doorInit() {

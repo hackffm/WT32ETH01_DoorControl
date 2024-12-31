@@ -119,6 +119,11 @@ void loop() {
         lanEnableWebFileEditor();
         LL_Log.println("Web File Editor enabled, reset to disable!");
       }
+      if(LL_Log.receiveLine[0]=='!') {
+        //UserDB.saveUserData();
+        UserDB.loadUserData();
+        LL_Log.println("Userdata reloaded.");
+      }
       if(LL_Log.receiveLine[0]=='L') {
         if (LittleFS.begin()){
             File root = LittleFS.open("/", "r");
