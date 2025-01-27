@@ -96,6 +96,7 @@
    .doorCard {
     border-radius: 30px;
     padding: 10px;
+    margin-bottom: 20px;
    }
    .state {
      font-size: 1.5rem;
@@ -130,8 +131,6 @@
       <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(0)">OPEN</button>
         <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(0)">CLOSE</button></p>
     </div>
-  </div>
-  <div class="content" id="cardDoorControl">
     <div class="card doorCard">
       <h1>Lounge</h1>
       <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(1)">OPEN</button>
@@ -174,8 +173,6 @@
         <br><button class="button" id="lsSave">Save key in browser</button>
         <br><button class="button" id="lsClear">clear key from browser</button>
         <br><div id="qrcode"></div>
-
-        <a href="doorQRCode.htm">doorQRCode.htm</a>
     </div>
   </div>
 
@@ -282,6 +279,8 @@
   localStorageMyKey = localStorage.getItem("doorMyKey");
   document.getElementById('cardDoorControl').style.display = 'none';
 
+  console.log(document.getElementById('cardDoorControl'));
+
   if (localStorageMyKey!=null) {
     localStorageKeyDataAvailable = true;
     localStorageMyKey = localStorage.getItem("doorMyKey");
@@ -301,7 +300,7 @@
     var typeNumber = 0;
     var errorCorrectionLevel = 'L';
     var qr = qrcode(typeNumber, errorCorrectionLevel);
-    let qrcodePayload = 'http://'+window.Location.hostname+'?transfer='+btoa(localStorageMyKey);
+    let qrcodePayload = 'http://'+window.location.hostname+'?transfer='+btoa(localStorageMyKey);
     qr.addData(qrcodePayload);
     qr.make();
     document.getElementById('qrcode').innerHTML = qr.createImgTag(4);
@@ -322,6 +321,7 @@
     document.getElementById('cardSate').style.display = 'none';
     document.getElementById('cardCommand').style.display = 'none';
     document.getElementById('cardKeyGen').style.display = 'none';
+    document.getElementById('cardDoorControl').style.display = 'none';
 
     document.getElementById('transfer').addEventListener("click", saveKeyInLocalStorage);
     
@@ -457,7 +457,7 @@
   }
   function onClose(event) {
     console.log('Connection closed');
-    setTimeout(initWebSocket, 2000);
+    // setTimeout(initWebSocket, 2000);
   }
   function onMessage(event) {
     var state;
@@ -499,7 +499,9 @@
         reader.onload = function(e) {
             fileContent = e.target.result;  // Dateiinhalt in die Variable ablegen
             let msg = decryptKey(fileContent);
-            document.getElementById('fileContent').innerText = msg;  
+            document.getElementById('fileContent').innerText = msg;
+            document.getElementById('transferName').innerText = msg;
+            document.getElementById('privateKey').value = fileContent;  
         };
         document.getElementById('stateFile').innerText = file.name;
         reader.readAsText(file);  // Datei als Text lesen
