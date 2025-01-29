@@ -126,15 +126,10 @@
     </div>
   </div>
   <div class="content" id="cardDoorControl">
-    <div class="card doorCard">
-      <h1 id="doorName">Haupteingang</h1>
-      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(0)">OPEN</button>
-        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(0)">CLOSE</button></p>
-    </div>
-    <div class="card doorCard">
-      <h1>Lounge</h1>
-      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(1)">OPEN</button>
-        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(1)">CLOSE</button></p>
+    <div class="card doorCard" id="doorCardTemplate" style="display: none;">
+      <h1 id="doorName">xxx</h1>
+      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(this)" data-door-id="null">OPEN</button>
+        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(this)" data-door-id="null">CLOSE</button></p>
     </div>
   </div>
   <div class="content" id="cardOpenFile">
@@ -201,11 +196,18 @@
 
   let thisDoorID = 0;
 
+  let nodeCardDoorControl = document.getElementById("cardDoorControl");
+
   doors.forEach((el) => {
-    if(el.hostname==window.location.hostname) {
-      thisDoorID = el.id;
-      document.getElementById("doorName").innerHTML = el.name;
-    }
+    thisDoorID = el.id;
+    let newDoorCard = document.getElementById("doorCardTemplate").cloneNode(true);
+    console.log(newDoorCard);
+    newDoorCard.querySelector("#doorName").innerHTML = el.name;
+    newDoorCard.style = '';
+    newDoorCard.querySelector("#buttonDoorOpen").dataset.doorId = thisDoorID;
+    newDoorCard.querySelector("#buttonDoorClose").dataset.doorId = thisDoorID;
+
+    nodeCardDoorControl.appendChild(newDoorCard);
   });
 
   console.log(thisDoorID);
@@ -213,7 +215,6 @@
   let lastWSDoorRequest = -1;
   let gateways = [];
 
-  // gateways[0] = gateway;
   gateways[0] = 'ws://maindoor/ws';
   gateways[1] = 'ws://loungedoor/ws';
 
@@ -222,7 +223,6 @@
 
   websocket[0] = null;
   websocket[1] = null;
-  
 
   const queryString = window.location.search;
   const urlParams = new URLSearchParams(queryString);
@@ -353,14 +353,19 @@
     'txData'    : new Uint8Array(4+64+32+32+8+70),
   };
 
-  function openDoor(doorID) {
+  function openDoor(doorCard) {
+    console.log(doorCard);
+    doorID = doorCard.dataset.doorId;
+    console.log(doorCard.dataset);
+    console.log(doorID);
     lockDoorControlButtons();
     nextCommandAfterChallenge = 'O';
     lastWSDoorRequest = doorID;
     sendCommand('c',false,doorID);
   }
 
-  function closeDoor(doorID) {
+  function closeDoor(doorCard) {
+    doorID = doorCard.dataset.doorId;
     lockDoorControlButtons();
     nextCommandAfterChallenge = 'C';
     lastWSDoorRequest = doorID;
@@ -393,14 +398,12 @@
   
   function sendCommand(send_cmd,resetNextCommand=false, doorID) {
     txCommand(send_cmd);
-    
-
     initWebSocket();
     if(resetNextCommand) {
       nextCommandAfterChallenge = null;
     }
     websocket[doorID].send(protoTx.txData);
-    // websocket.close();
+    //websocket[doorID].close();
   }
   
   function txCommand(command) {
