@@ -229,7 +229,7 @@ void lockdriveHandle() {
     u8g2.setDrawColor(0);
     u8g2.drawBox(0,0,128,40);
     char s[128];
-    sprintf(s, "$!$9$cAPC:%0.2f", anglePosCum/4096.0);
+    sprintf(s, "$!$E$cAPC:%0.2f", anglePosCum/4096.0);
     u8g2.setDrawColor(1);
     LL_Log.SSD1306drawString(s, 0, -10, 1);
 

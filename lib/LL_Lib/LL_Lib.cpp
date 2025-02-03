@@ -16,7 +16,7 @@
 #if defined(U8G2_DISPLAYTYPE)
   #include <U8g2lib.h>
   #include <Wire.h>
-  U8G2_DISPLAYTYPE u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+  U8G2_DISPLAYTYPE u8g2(U8G2_R1, /* reset=*/ U8X8_PIN_NONE);
   U8G2LOG u8g2log;
   // log size should be adjusted to fit good in log-window size
   // max size inside box 124x60 
@@ -29,10 +29,12 @@
   #define U8LOG_HEIGHT 6
   */
 
+  #define U8G2_DISP_WIDTH  64 /* 128 */
+  #define U8G2_DISP_HEIGHT 128
   #define U8LOG_FONT u8g2_font_tom_thumb_4x6_tf
   #define U8LOG_FONT_X  4
   #define U8LOG_FONT_Y  6
-  #define U8LOG_WIDTH 31
+  #define U8LOG_WIDTH ((U8G2_DISP_WIDTH - 4) / U8LOG_FONT_X)
   #define U8LOG_HEIGHT 6
 
   uint8_t u8log_buffer[U8LOG_WIDTH*U8LOG_HEIGHT];

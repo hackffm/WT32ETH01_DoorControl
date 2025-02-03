@@ -48,7 +48,7 @@ void setup() {
   uiBlinkLED(0xffffff, 1000, 0x0000ff, 400, 10);
 }
 
-
+// Core 0
 void loop2(void* pvParameters) {
   elapsedMillis blinkTimerL2 = 0;
   static int LastPressedButton = 0;
@@ -59,9 +59,10 @@ void loop2(void* pvParameters) {
     uiHandle();
     doorHandle();
 
-    if(blinkTimerL2 > 200) {
+    if(blinkTimerL2 > 60000) {
       static uint8_t blinkseq = 0;
       blinkTimerL2 = 0;
+      //LL_Log.printf("Hello world from core %d!\n", xPortGetCoreID() );
     }
 
     PressedButton = uiGetPressedButton(&PressedButtonDuration);
@@ -96,12 +97,14 @@ void loop2(void* pvParameters) {
   }
 }
 
+// core 1
 void loop() {
   LL_Log.update(eth_connected?1:0); 
   //LedGreen.update();
   lanHandle();
 
   if(LL_Log.receiveLineAvailable()) {
+    // LL_Log.printf("Hello world from core %d!\n", xPortGetCoreID() );
     LL_Log.println(LL_Log.receiveLine);
     if(LL_Log.receiveLine[0]=='l') lanPrintInfo();
     if(LL_Log.receiveLine[0]=='a') {
