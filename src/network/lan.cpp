@@ -135,7 +135,10 @@ String processor(const String& var){
       return "OFF";
     }
   }
-  return String();
+  if(var == "HOSTNAME"){
+      return String(lan_hostname);
+  }
+  return String("%" + var + "%");
 }
 
 
@@ -307,7 +310,7 @@ void lanInit(const char *hostname) {
     //  request->send(LittleFS, "/www/door.htm");
     //});
 
-    web_server.serveStatic("/", LittleFS, "/www/").setDefaultFile("door.htm");;
+    web_server.serveStatic("/", LittleFS, "/www/").setDefaultFile("door.htm"); // .setTemplateProcessor(processor);
 
     // Start server
 
