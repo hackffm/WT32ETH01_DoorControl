@@ -10,63 +10,61 @@
 #endif
 
 #ifdef DEF_LOCKDRIVE
-#define DOOR_SIG_OPEN_PIN   12
-#define DOOR_SIG_CLOSE_PIN  2
-#define LOCKDRIVE_SHORTPRESS_MS 120
-#define LOCKDRIVE_OPENING_MS 7000
-#define LOCKDRIVE_CLOSING_MS 7000
-uint8_t lockdriveState = 0; // 0=nothing, 1=opening, 2=closing
-elapsedMillis lockdriveMovetime;
+  #define DOOR_SIG_OPEN_PIN   12
+  #define DOOR_SIG_CLOSE_PIN  2
+  #define LOCKDRIVE_SHORTPRESS_MS 120
+  #define LOCKDRIVE_OPENING_MS 7000
+  #define LOCKDRIVE_CLOSING_MS 7000
+  uint8_t lockdriveState = 0; // 0=nothing, 1=opening, 2=closing
+  elapsedMillis lockdriveMovetime;
 
-bool lockdriveIsMoving() {
-  if(lockdriveState != 0) return true;
-  return false;
-}
-
-void lockdriveInit() {
-  digitalWrite(DOOR_SIG_OPEN_PIN, LOW);
-  digitalWrite(DOOR_SIG_CLOSE_PIN, LOW);
-  pinMode(DOOR_SIG_OPEN_PIN, OUTPUT);
-  pinMode(DOOR_SIG_CLOSE_PIN, OUTPUT);
-  digitalWrite(DOOR_SIG_OPEN_PIN, LOW);
-  digitalWrite(DOOR_SIG_CLOSE_PIN, LOW);
-  lockdriveState = 0;
-}
-
-void lockdriveHandle() {
-  switch(lockdriveState) {
-    case 1:
-      if(lockdriveMovetime > LOCKDRIVE_OPENING_MS) {
-        lockdriveState = 0;
-        LL_Log.println("Now open.");
-      }
-      break;
-    case 2:
-      if(lockdriveMovetime > LOCKDRIVE_CLOSING_MS) {
-        lockdriveState = 0;
-        LL_Log.println("Now closed.");
-      }
-      break;
+  bool lockdriveIsMoving() {
+    if(lockdriveState != 0) return true;
+    return false;
   }
-}
 
-void lockdriveOpen() {
-  lockdriveMovetime = 0;
-  digitalWrite(DOOR_SIG_OPEN_PIN, HIGH);  // press button for some time
-  delay(LOCKDRIVE_SHORTPRESS_MS);
-  digitalWrite(DOOR_SIG_OPEN_PIN, LOW);
-  LL_Log.println("Simulate pressing open button, waiting...");
-  lockdriveState = 1;
-}
+  void lockdriveInit() {
+    pinMode(DOOR_SIG_OPEN_PIN, OUTPUT);
+    pinMode(DOOR_SIG_CLOSE_PIN, OUTPUT);
+    digitalWrite(DOOR_SIG_OPEN_PIN, LOW);
+    digitalWrite(DOOR_SIG_CLOSE_PIN, LOW);
+    lockdriveState = 0;
+  }
 
-void lockdriveClose() {
-  lockdriveMovetime = 0;
-  digitalWrite(DOOR_SIG_CLOSE_PIN, HIGH);  // press button for some time
-  delay(LOCKDRIVE_SHORTPRESS_MS);
-  digitalWrite(DOOR_SIG_CLOSE_PIN, LOW);
-  LL_Log.println("Simulate pressing close button, waiting...");
-  lockdriveState = 2;
-}
+  void lockdriveHandle() {
+    switch(lockdriveState) {
+      case 1:
+        if(lockdriveMovetime > LOCKDRIVE_OPENING_MS) {
+          lockdriveState = 0;
+          LL_Log.println("Now open.");
+        }
+        break;
+      case 2:
+        if(lockdriveMovetime > LOCKDRIVE_CLOSING_MS) {
+          lockdriveState = 0;
+          LL_Log.println("Now closed.");
+        }
+        break;
+    }
+  }
+
+  void lockdriveOpen() {
+    lockdriveMovetime = 0;
+    digitalWrite(DOOR_SIG_OPEN_PIN, HIGH);  // press button for some time
+    delay(LOCKDRIVE_SHORTPRESS_MS);
+    digitalWrite(DOOR_SIG_OPEN_PIN, LOW);
+    LL_Log.println("Simulate pressing open button, waiting...");
+    lockdriveState = 1;
+  }
+
+  void lockdriveClose() {
+    lockdriveMovetime = 0;
+    digitalWrite(DOOR_SIG_CLOSE_PIN, HIGH);  // press button for some time
+    delay(LOCKDRIVE_SHORTPRESS_MS);
+    digitalWrite(DOOR_SIG_CLOSE_PIN, LOW);
+    LL_Log.println("Simulate pressing close button, waiting...");
+    lockdriveState = 2;
+  }
 #endif
 
 /*
@@ -94,6 +92,9 @@ elapsedMillis WaitForDoorClosing;
 uint16_t DelayClosingToLocking = 1000;
 elapsedMillis WaitForDoorClosingDelay;
 
+// local variables to debounce door states
+  elapsedMillis doorStateChangedSince = 0;
+
 uint8_t doorGetDoorState() { return doorState; }
 uint8_t doorGetLockState() { return lockState; }
 uint8_t doorGetTrigState() { return trigState; }
@@ -111,47 +112,61 @@ void doorHandle() {
 
   lockdriveHandle();
 
-  #ifdef DEF_STEPPERDRIVE
-  // ## TODO: Averaging and debouncing
-  if(analogRead(36) < 150) doorState = 1; else doorState = 2;
-  #endif
+  // All this stuff dont need to be fast
+  static elapsedMillis actionTimer = 0;
+  if(actionTimer > 20) {
+    actionTimer = 0;
 
-  // Reset trigState when moving is finished
-  if(trigState == 1) {
-    if(lockdriveIsMoving() == false) {
-      trigState = 0;
-      LL_Log.println("Move finished.");
-      uiSetLED(0x000000); 
-    }
-  }
-
-  // Wait with timeout that door is beeing closed
-  if(trigState == 2) {
-    if(WaitForDoorClosing > TimeOutForDoorClosing) {
-      trigState = 0; // Abort
-      LL_Log.println("Aborted.");
-      uiSetLED(0x000000);
+    // Averaging and debouncing
+    uint8_t doorStateAct = 0;
+    if(analogRead(36) < 150) doorStateAct = 1; else doorStateAct = 2;
+    if(doorStateAct == doorState) {
+      doorStateChangedSince = 0;
     } else {
-      if(doorState == 1) {
-        // Kick-off closing delay
-        trigState = 3;
-        WaitForDoorClosingDelay = 0;
+      if(doorStateChangedSince > 1000) {
+        doorState = doorStateAct;
+        if(doorState == 1) { LL_Log.printf("Door state changed to closed.\r\n"); }
+        if(doorState == 2) { LL_Log.printf("Door state changed to open.\r\n"); }
       }
     }
-  }
 
-  // Wait that closing delay is passed
-  if(trigState == 3) {
-    // Abort if door open again
-    if(doorState != 1) {
-      trigState = 2;
-    } else {
-      if(WaitForDoorClosingDelay > DelayClosingToLocking) {
-        trigState = 1;
-        LL_Log.println("Locking door...");
-        lockdriveClose();
-        lockState = 1;
-        uiBlinkLED(0xff0000,200,0x000000,200,0);
+    // Reset trigState when moving is finished
+    if(trigState == 1) {
+      if(lockdriveIsMoving() == false) {
+        trigState = 0;
+        LL_Log.println("Move finished.");
+        uiSetLED(0x000000); 
+      }
+    }
+
+    // Wait with timeout that door is beeing closed
+    if(trigState == 2) {
+      if(WaitForDoorClosing > TimeOutForDoorClosing) {
+        trigState = 0; // Abort
+        LL_Log.println("Aborted.");
+        uiSetLED(0x000000);
+      } else {
+        if(doorState == 1) {
+          // Kick-off closing delay
+          trigState = 3;
+          WaitForDoorClosingDelay = 0;
+        }
+      }
+    }
+
+    // Wait that closing delay is passed
+    if(trigState == 3) {
+      // Abort if door open again
+      if(doorState != 1) {
+        trigState = 2;
+      } else {
+        if(WaitForDoorClosingDelay > DelayClosingToLocking) {
+          trigState = 1;
+          LL_Log.println("Locking door...");
+          lockdriveClose();
+          lockState = 1;
+          uiBlinkLED(0xff0000,200,0x000000,200,0);
+        }
       }
     }
   }

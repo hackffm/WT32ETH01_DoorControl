@@ -12,12 +12,15 @@
 #include "esp_sntp.h"
 
 #include <esp_wifi.h>
-#include <QuickEspNow.h>
+#include <esp_now.h>
+#include <esp_log.h>
+//#include <QuickEspNow.h>
 
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
-#include <ESP32Ping.h> // blocking!
+#include "ping/ping_sock.h"
+#include "lwip/netdb.h"
 
 #include "lan.h"
 
@@ -213,8 +216,165 @@ void espNowdataReceived (uint8_t* address, uint8_t* data, uint8_t len, signed in
     if(rssi > -70) sourceid = 0;
     bool protOK = protocolInput(data, len, ansbuf, &anslen, sourceid);
     if(protOK) {
-      quickEspNow.send(ESPNOW_BROADCAST_ADDRESS, ansbuf, anslen);
+      lanEspNowTx(ansbuf, anslen);
     }    
+}
+
+// Callback receive
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+void on_data_recv(const esp_now_recv_info_t *esp_now_info, const uint8_t *data_orig, int len) {
+  const uint8_t *mac_addr  = esp_now_info->src_addr;
+  #else
+void on_data_recv(const uint8_t *mac_addr, const uint8_t *data_orig, int len) {
+#endif  
+    uint8_t data[255];
+    if(len < 1) return;
+    if(len > 251) return;
+    memcpy(data, data_orig, len); data[len] = 0;
+    signed int rssi = -1;
+    rssi = esp_now_info->rx_ctrl->rssi;
+    /*
+    LL_Log.print ("Received: ");
+    LL_Log.printf ("%.*s\n", len, data);
+    LL_Log.printf ("RSSI: %d dBm\n", rssi);
+    LL_Log.printf ("From: " MACSTR "\n", MAC2STR (address));
+    LL_Log.printf ("%s\n", broadcast ? "Broadcast" : "Unicast");
+    */
+   uint8_t ansbuf[250];
+   size_t anslen = 250;
+   int sourceid = 2;
+   LL_Log.printf("\nESP Now Rx w RSSI: %d dBm\n", rssi);
+   if(rssi > -76) sourceid = 0;
+   bool protOK = protocolInput(data, len, ansbuf, &anslen, sourceid);
+   if(protOK) {
+     lanEspNowTx(ansbuf, anslen);
+   } 
+}
+
+// Callback transmit
+void on_data_sent(const uint8_t *mac, esp_now_send_status_t status) {
+  //LL_Log.printf("Tx: %s\n", status == ESP_NOW_SEND_SUCCESS ? "Ok" : "Failed");
+  if(status != ESP_NOW_SEND_SUCCESS) LL_Log.printf("EspNow Tx failed!\n");
+}
+
+void lanEspNowTx(const uint8_t *data, int len) {
+  if(len > 0) {
+    //quickEspNow.send(mac, data, len);
+    esp_now_peer_info_t peer = {
+      .peer_addr = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+      .channel = ESPNOW_CHANNEL,
+      .encrypt = false
+    };
+    ESP_ERROR_CHECK(esp_now_send(peer.peer_addr, data, len));
+  }
+}
+
+elapsedMillis pingRunningTime = 0;
+int pingRunStatus = 0;
+esp_ping_handle_t pingHandle;
+char pingResultString[200];
+
+static void cb_on_ping_success(esp_ping_handle_t hdl, void *args)
+{
+    // optionally, get callback arguments
+    // const char* str = (const char*) args;
+    // printf("%s\r\n", str); // "foo"
+    uint8_t ttl;
+    uint16_t seqno;
+    uint32_t elapsed_time, recv_len;
+    ip_addr_t target_addr;
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SEQNO, &seqno, sizeof(seqno));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_TTL, &ttl, sizeof(ttl));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target_addr, sizeof(target_addr));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SIZE, &recv_len, sizeof(recv_len));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
+    snprintf(pingResultString, sizeof(pingResultString), "%d bytes from %s icmp_seq=%d ttl=%d time=%d ms\n",
+           recv_len, inet_ntoa(target_addr.u_addr.ip4), seqno, ttl, elapsed_time);
+    // LL_Log.printf("%s", pingResultString);
+    pingRunStatus = 2;
+}
+
+static void cb_on_ping_timeout(esp_ping_handle_t hdl, void *args)
+{
+    uint16_t seqno;
+    ip_addr_t target_addr;
+    esp_ping_get_profile(hdl, ESP_PING_PROF_SEQNO, &seqno, sizeof(seqno));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target_addr, sizeof(target_addr));
+    snprintf(pingResultString, sizeof(pingResultString), "From %s icmp_seq=%d timeout\n", inet_ntoa(target_addr.u_addr.ip4), seqno);
+    LL_Log.printf("%s", pingResultString);
+    pingRunStatus = 3;
+}
+
+static void cb_on_ping_end(esp_ping_handle_t hdl, void *args)
+{
+    uint32_t transmitted;
+    uint32_t received;
+    uint32_t total_time_ms;
+
+    esp_ping_get_profile(hdl, ESP_PING_PROF_REQUEST, &transmitted, sizeof(transmitted));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_REPLY, &received, sizeof(received));
+    esp_ping_get_profile(hdl, ESP_PING_PROF_DURATION, &total_time_ms, sizeof(total_time_ms));
+    snprintf(pingResultString, sizeof(pingResultString), "%d packets transmitted, %d received, time %dms\n", transmitted, received, total_time_ms);
+    // LL_Log.printf("%s", pingResultString);
+    pingRunStatus = 11;
+    if(received > 0) pingRunStatus = 20;
+}
+
+// Pings gateway if no host is given
+void lanPingStart(const char *host) {
+
+  if(pingRunStatus > 0) {
+    esp_ping_stop(pingHandle);
+    esp_ping_delete_session(pingHandle);
+  }
+
+  /* convert URL to IP address */
+  ip_addr_t target_addr;
+
+  if((host == NULL) || (strlen(host) == 0)) {
+    IPAddress ip = ETH.gatewayIP();
+    ip.to_ip_addr_t(&target_addr);
+  } else {
+    addrinfo hint;
+    addrinfo *res = NULL;
+    memset(&hint, 0, sizeof(hint));
+    memset(&target_addr, 0, sizeof(target_addr));
+    int ga_ret = getaddrinfo(host, NULL, &hint, &res);
+    struct in_addr addr4 = ((struct sockaddr_in *) (res->ai_addr))->sin_addr;
+    inet_addr_to_ip4addr(ip_2_ip4(&target_addr), &addr4);
+    freeaddrinfo(res);
+    if(ga_ret != 0) {
+      LL_Log.printf("getaddrinfo failed: %d\n", ga_ret);
+      pingRunStatus = -1;
+      return;
+    }
+  }
+
+  esp_ping_config_t ping_config = ESP_PING_DEFAULT_CONFIG();
+  ping_config.target_addr = target_addr;          // target IP address
+  ping_config.count = 1;   
+
+  /* set callback functions */
+  esp_ping_callbacks_t cbs;
+  cbs.on_ping_success = cb_on_ping_success;
+  cbs.on_ping_timeout = cb_on_ping_timeout;
+  cbs.on_ping_end = cb_on_ping_end;
+  cbs.cb_args = NULL;  // arguments that feeds to all callback functions, can be NULL
+
+  esp_ping_new_session(&ping_config, &cbs, &pingHandle);
+  esp_ping_start(pingHandle);
+  pingRunStatus = 1;
+  pingRunningTime = 0;
+}
+
+// <=0 = not started, 1...3 = running, 10...11 = timeout, 20 = success
+int lanPingStatus() {
+  if((pingRunStatus > 0) && (pingRunStatus < 10)) {
+    if(pingRunningTime > 5000) {
+      pingRunStatus = 10;
+    }
+  }
+  return pingRunStatus;
 }
 
 void lanInit(const char *hostname) {
@@ -228,6 +388,48 @@ void lanInit(const char *hostname) {
   ETH.begin();
 
   // No Wifi, but ESP-Now on channel x
+    // WiFi-Init
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE));
+  
+    // ESP-NOW-Init
+    ESP_ERROR_CHECK(esp_now_init());
+    esp_now_register_recv_cb(on_data_recv);
+    esp_now_register_send_cb(on_data_sent);
+  
+    // Peer-Info konfigurieren (Broadcast)
+    esp_now_peer_info_t peer = {
+        .peer_addr = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+        .channel = ESPNOW_CHANNEL,
+        .encrypt = false
+    };
+    ESP_ERROR_CHECK(esp_now_add_peer(&peer));
+  
+    wifi_phy_rate_t wifi_rate = WIFI_PHY_RATE_48M; // WIFI_PHY_RATE_MCS5_SGI;
+   // wifi_rate = WIFI_PHY_RATE_LORA_250K;
+   // wifi_rate = WIFI_PHY_RATE_1M_L;
+    wifi_rate = WIFI_PHY_RATE_24M;
+   // wifi_rate = WIFI_PHY_RATE_MCS5_LGI;
+   
+    esp_wifi_set_max_tx_power(44); // 11 dbm
+    
+    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B|WIFI_PROTOCOL_11G|WIFI_PROTOCOL_11N /* |WIFI_PROTOCOL_LR */);
+    #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    esp_now_rate_config_t en_rateconfig = {
+      .phymode = WIFI_PHY_MODE_HT20, // WIFI_PHY_MODE_11G,
+      .rate = WIFI_PHY_RATE_MCS0_LGI, //WIFI_PHY_RATE_MCS1_LGI, // WIFI_PHY_RATE_MCS4_SGI,
+      .ersu = false,   
+      .dcm = false,
+    };
+    esp_now_set_peer_rate_config(peer.peer_addr, &en_rateconfig);
+    #else
+    esp_wifi_config_espnow_rate(WIFI_IF_STA,  wifi_rate);
+    #endif
+
+  /* OLD:
   WiFi.mode(WIFI_MODE_STA);
   WiFi.disconnect(false, true);
   quickEspNow.onDataRcvd(espNowdataReceived);
@@ -243,8 +445,27 @@ void lanInit(const char *hostname) {
   esp_wifi_set_max_tx_power(60);
 
  // Serial.println(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B|WIFI_PROTOCOL_11G|WIFI_PROTOCOL_11N|WIFI_PROTOCOL_LR));
-  LL_Log.println(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B|WIFI_PROTOCOL_11G|WIFI_PROTOCOL_11N /* |WIFI_PROTOCOL_LR */));
+  LL_Log.println(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B|WIFI_PROTOCOL_11G|WIFI_PROTOCOL_11N ));
+  
+  #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+  // Peer-Info konfigurieren (Broadcast)
+  esp_now_peer_info_t peer = {
+      .peer_addr = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+      .channel = ESPNOW_CHANNEL,
+      .encrypt = false
+  };
+  ESP_ERROR_CHECK(esp_now_add_peer(&peer));
+  esp_now_rate_config_t en_rateconfig = {
+    .phymode = WIFI_PHY_MODE_HT20, // WIFI_PHY_MODE_11G,
+    .rate = WIFI_PHY_RATE_MCS4_LGI, // WIFI_PHY_RATE_MCS1_LGI, // WIFI_PHY_RATE_MCS4_SGI,
+    .ersu = false,   
+    .dcm = false,
+  };
+  esp_now_set_peer_rate_config(peer.peer_addr, &en_rateconfig);
+  #else
   LL_Log.println(esp_wifi_config_espnow_rate(WIFI_IF_STA,  wifi_rate ));
+  #endif
+  */
 
   // Port defaults to 3232
   // ArduinoOTA.setPort(3232);
@@ -318,9 +539,20 @@ void lanInit(const char *hostname) {
     //web_server.init(); 
     web_server.begin();
 
-
-    esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
-    esp_task_wdt_add(NULL); //add current thread to WDT watch
+    #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+      // If the TWDT was not initialized automatically on startup, manually intialize it now
+      esp_task_wdt_config_t twdt_config = {
+        .timeout_ms = (WDT_TIMEOUT * 1000UL),
+        .idle_core_mask = (1 << CONFIG_FREERTOS_NUMBER_OF_CORES) - 1,    // Bitmask of all cores
+        .trigger_panic = true,
+      };
+      ESP_ERROR_CHECK(esp_task_wdt_reconfigure(&twdt_config));
+      ESP_ERROR_CHECK(esp_task_wdt_add(NULL)); //add current thread to WDT watch
+      ESP_ERROR_CHECK(esp_task_wdt_reset());
+    #else
+      esp_task_wdt_init(WDT_TIMEOUT, true); //enable panic so ESP32 restarts
+    #endif
+    
 
 }
 
@@ -355,16 +587,23 @@ void lanHandle() {
   }
 
   if(pingTimer > 10000) {
-    bool success = Ping.ping(ETH.gatewayIP(), 3);
     pingTimer = 0;
-    if(success) pingFailCount = 0; else { 
+
+    if(lanPingStatus() >= 20) {
+      pingFailCount = 0;
+    } else if(lanPingStatus() >= 10) {
+      LL_Log.printf("Ping failed: %s\n", pingResultString);
       pingFailCount++;
-      LL_Log.print("Ping failed!\n");
+    } 
+    if((lanPingStatus() <= 0) || (lanPingStatus() >= 10)) {
+      lanPingStart();
     }
+
     // workaround to keep EspNow going...
-    quickEspNow.send(ESPNOW_BROADCAST_ADDRESS, (const uint8_t*)"dpng\0", 5);
+    lanEspNowTx((const uint8_t*)"dpng\0", 5);
   }
 
   if(pingFailCount < 3) esp_task_wdt_reset();
-  
+
+
 }

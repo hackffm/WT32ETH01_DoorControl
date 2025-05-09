@@ -174,7 +174,7 @@ void AsyncFsWebServer::handleFileEdit(AsyncWebServerRequest *request) {
         if(!request->authenticate(m_pageUser, m_pagePswd))
             return request->requestAuthentication();
     }
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", (uint8_t*)_acedit_min_htm, sizeof(_acedit_min_htm));
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", (uint8_t*)_acedit_min_htm, sizeof(_acedit_min_htm));
     response->addHeader("Content-Encoding", "gzip");
     request->send(response);
 }

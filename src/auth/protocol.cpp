@@ -8,7 +8,7 @@
 
 #include <Crypto.h>
 #include <Ed25519.h>
-#include "c25519_22b.hpp"
+//#include "c25519_22b.hpp"
 #include <RNG.h>
 #include "esp_random.h"
 
@@ -20,6 +20,7 @@
 #define PROTOMINLEN (4+64+32+32+8+1)
 
 extern bool debugUnlocked;
+extern const char* hostname;
 
 bool addAllUnknownUsers = false;
 
@@ -120,7 +121,7 @@ bool getChallenge(uint8_t *challenge, const uint8_t *pubkey) {
  *   0   4  Preemble "D00a" (for answer)
  *   4  32  Public Key from Rx
  *  36   8  New challenge
- *  44   1  Answer (might be longer than 1 if needed)
+ *  44   1  Answer (might be longer than 1 if needed, new: c adds now hostname)
  */
 bool protocolInput(uint8_t *data, size_t len, uint8_t *answer, size_t *anslen, int sourceid) {
   if((data == NULL) || (len < PROTOMINLEN) || (answer == NULL) || (*anslen < 90)) return false;
@@ -154,19 +155,20 @@ bool protocolInput(uint8_t *data, size_t len, uint8_t *answer, size_t *anslen, i
   memcpy(newChallenge, challenge, 8);
   challengeValid = getChallenge(newChallenge, publicKey); 
   memcpy(&answer[36], newChallenge, 8);
-  LL_Log.printf("challengeValid %s\n", challengeValid ? "True" : "False");
-  LL_Log.printf("perf1: %d\n", (int)perfMs);
+  LL_Log.printf(" challengeValid %s\n", challengeValid ? "True" : "False");
+  //LL_Log.printf("perf1: %d\n", (int)perfMs);
 
   if(command[0] == 'c') {
     // do not check signature to safe time
     answer[44] = 'c'; // getting a challenge does not require much...
+    *anslen += sprintf((char *)&answer[45], "%s", hostname);
   } else {
     // Verify signature
     sigValid = Ed25519::verify(signature, publicKey, publicKey, len-68);
-    LL_Log.printf("perf2: %d\n", (int)perfMs);
+  //  LL_Log.printf("perf2: %d\n", (int)perfMs);
     //bool sigValid2 = edsign_verify(signature, publicKey, publicKey, len-68);
     //LL_Log.printf("perf3: %d\n", (int)perfMs);
-    LL_Log.printf("sigValid %s\n", sigValid ? "True" : "False");
+    LL_Log.printf(" sigValid %s\n", sigValid ? "True" : "False");
     //LL_Log.printf("sigValid2 %s\n", sigValid2 ? "True" : "False");
 
     // Lookup public key
@@ -175,12 +177,12 @@ bool protocolInput(uint8_t *data, size_t len, uint8_t *answer, size_t *anslen, i
       sprintf(buff, "%02x", (uint8_t) publicKey[i]);
       msg += buff ;
     }
-    LL_Log.printf("Pubkey: %s\n",msg.c_str());
+    LL_Log.printf(" Pubkey: %s\n",msg.c_str());
 
     // Lookup user
     userFound = UserDB.findUser(msg.c_str(), namestr, userFlags);
-    LL_Log.printf("userFound %s\n", userFound ? "True" : "False");
-    LL_Log.printf("perf5: %d\n", (int)perfMs);  
+    LL_Log.printf(" userFound %s\n", userFound ? namestr.c_str() : "False");
+  //  LL_Log.printf("perf5: %d\n", (int)perfMs);  
   
     if(sigValid) { 
       if(!userFound) {

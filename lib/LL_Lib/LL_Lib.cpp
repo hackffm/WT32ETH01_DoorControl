@@ -194,7 +194,11 @@ void LL_Log_c::update(int8_t isConnected) {
         for(int i=0; i<LL_LOG_MAX_CLIENTS; i++) {
           if((!_logTCPClients[i]) || (!_logTCPClients[i].connected())) {
             if(_logTCPClients[i]) _logTCPClients[i].stop();
+            #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+            _logTCPClients[i] = _ptrlogTCPServer->accept();
+            #else
             _logTCPClients[i] = _ptrlogTCPServer->available();
+            #endif
             Serial.printf("Log-Client %d connected.\r\n", i);
             _logTCPClients[i].println("TCP Log opened.");
             accepted = true;
@@ -203,7 +207,11 @@ void LL_Log_c::update(int8_t isConnected) {
           }
         }
         if(!accepted) {
+          #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+          _ptrlogTCPServer->accept().stop();
+          #else
           _ptrlogTCPServer->available().stop();
+          #endif
           Serial.println("Log client connection refused - no free slots.");
         }
       }

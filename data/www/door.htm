@@ -75,7 +75,7 @@
     padding: 30px 10px 60px;
     color: #8be38b;
     background-color: #00aa00;
-    font-size: 30px;
+    font-size: 40px;
     font-weight: bold;
     letter-spacing: .2rem;
 
@@ -96,6 +96,7 @@
    .doorCard {
     border-radius: 30px;
     padding: 10px;
+    margin-bottom: 20px;
    }
    .state {
      font-size: 1.5rem;
@@ -125,10 +126,10 @@
     </div>
   </div>
   <div class="content" id="cardDoorControl">
-    <div class="card doorCard">
-      <h1>Haupteingang</h1>
-      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor()">OPEN</button>
-        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor()">CLOSE</button></p>
+    <div class="card doorCard" id="doorCardTemplate" style="display: none;">
+      <h1 id="doorName">xxx</h1>
+      <p><button id="buttonDoorOpen" class="button btnDoorOpen" onclick="openDoor(this)" data-door-id="null">OPEN</button>
+        <button id="buttonDoorClose" class="button btnDoorClose" onclick="closeDoor(this)" data-door-id="null">CLOSE</button></p>
     </div>
   </div>
   <div class="content" id="cardOpenFile">
@@ -155,7 +156,7 @@
         <p class="state">Reply: <span id="answerCommand">Answer</span></p>
       <p><button id="buttonTxCommand" onclick="butTxCommand()" class="button">Send</button></p>
     </div>
-  </div>  
+  </div> 
   <div class="content" id="cardKeyGen">
      <div class="card">
         <h2>ED25519 Private Key Generator</h2>
@@ -167,8 +168,6 @@
         <br><button class="button" id="lsSave">Save key in browser</button>
         <br><button class="button" id="lsClear">clear key from browser</button>
         <br><div id="qrcode"></div>
-
-        <a href="doorQRCode.htm">doorQRCode.htm</a>
     </div>
   </div>
 
@@ -176,7 +175,7 @@
 <script>
 
   var gateway = `ws://${window.location.hostname}/ws`;
-  var websocket;
+  let websocket = [];
   let fileContent = '';
   window.addEventListener('load', onLoad);
   const fileInput = document.createElement('input');
@@ -189,9 +188,45 @@
   let challenge = new Uint8Array(8); 
   let keyStatus = null;
 
+  console.log(window.location.hostname);
+
+  const doors = [];
+  doors[0] = {name:'Haupteingang', hostname:'maindoor', id:0, ws:'ws://maindoor/ws'}; 
+  doors[1] = {name:'Lounge', hostname:'loungedoor', id:1, ws:'ws://loungedoor/ws'}; 
+
+  let thisDoorID = 0;
+
+  let nodeCardDoorControl = document.getElementById("cardDoorControl");
+
+  doors.forEach((el) => {
+    
+    let newDoorCard = document.getElementById("doorCardTemplate").cloneNode(true);
+    console.log(newDoorCard);
+    newDoorCard.querySelector("#doorName").innerHTML = el.name;
+    newDoorCard.style = '';
+    newDoorCard.querySelector("#buttonDoorOpen").dataset.doorId = el.id;
+    newDoorCard.querySelector("#buttonDoorClose").dataset.doorId = el.id;
+
+    nodeCardDoorControl.appendChild(newDoorCard);
+
+    if(el.hostname==window.location.hostname) {
+      thisDoorID = el.id;
+    }
+  });
+
+  console.log('thisDoorID'+thisDoorID);
+  
+  let lastWSDoorRequest = -1;
+  let gateways = [];
+
+  gateways[0] = 'ws://maindoor/ws';
+  gateways[1] = 'ws://loungedoor/ws';
+
   // init qrcode
   // https://github.com/kazuhikoarase/qrcode-generator/tree/master/js
-  
+
+  websocket[0] = null;
+  websocket[1] = null;
 
   const queryString = window.location.search;
   const urlParams = new URLSearchParams(queryString);
@@ -248,6 +283,8 @@
   localStorageMyKey = localStorage.getItem("doorMyKey");
   document.getElementById('cardDoorControl').style.display = 'none';
 
+  console.log(document.getElementById('cardDoorControl'));
+
   if (localStorageMyKey!=null) {
     localStorageKeyDataAvailable = true;
     localStorageMyKey = localStorage.getItem("doorMyKey");
@@ -267,7 +304,7 @@
     var typeNumber = 0;
     var errorCorrectionLevel = 'L';
     var qr = qrcode(typeNumber, errorCorrectionLevel);
-    let qrcodePayload = 'http://loungedoor?transfer='+btoa(localStorageMyKey);
+    let qrcodePayload = 'http://'+window.location.hostname+'?transfer='+btoa(localStorageMyKey);
     qr.addData(qrcodePayload);
     qr.make();
     document.getElementById('qrcode').innerHTML = qr.createImgTag(4);
@@ -288,12 +325,11 @@
     document.getElementById('cardSate').style.display = 'none';
     document.getElementById('cardCommand').style.display = 'none';
     document.getElementById('cardKeyGen').style.display = 'none';
+    document.getElementById('cardDoorControl').style.display = 'none';
 
     document.getElementById('transfer').addEventListener("click", saveKeyInLocalStorage);
     
   }
-
-  console.log(localStorageMyKey);
 
   function saveKeyInLocalStorage() {
     let privateKey = document.getElementById('privateKey').value;
@@ -321,45 +357,58 @@
     'txData'    : new Uint8Array(4+64+32+32+8+70),
   };
 
-  function openDoor() {
+  function openDoor(doorCard) {
+    console.log(doorCard);
+    doorID = doorCard.dataset.doorId;
+    console.log(doorCard.dataset);
+    console.log(doorID);
     lockDoorControlButtons();
     nextCommandAfterChallenge = 'O';
-    sendCommand('c');
+    lastWSDoorRequest = doorID;
+    sendCommand('c',false,doorID);
   }
 
-  function closeDoor() {
+  function closeDoor(doorCard) {
+    doorID = doorCard.dataset.doorId;
     lockDoorControlButtons();
     nextCommandAfterChallenge = 'C';
-    sendCommand('c');
+    lastWSDoorRequest = doorID;
+    sendCommand('c',false,doorID);
   }
 
   function lockDoorControlButtons() {
-    document.getElementById('buttonDoorOpen').disabled = true;
-    document.getElementById('buttonDoorClose').disabled = true;
+    let btnsOpenDoor = document.getElementsByClassName('btnDoorOpen');
+    let btnsCloseDoor = document.getElementsByClassName('btnDoorClose');
+    for(let i=0; i<btnsOpenDoor.length; i++) { 
+      btnsOpenDoor[i].disabled = true;
+      btnsCloseDoor[i].disabled = true;
+    }
     console.log("lock door control buttons");
     setTimeout(() => {
-      document.getElementById('buttonDoorOpen').disabled = false;
-      document.getElementById('buttonDoorClose').disabled = false;
+      for(let i=0; i<btnsOpenDoor.length; i++) { 
+        btnsOpenDoor[i].disabled = false;
+        btnsCloseDoor[i].disabled = false;
+      }
       console.log("release door control buttons");
-    }, "5000");
+    }, "7000");
   }
   
   function butTxCommand() {
     let cmd = document.getElementById('textCommand').value;
-    sendCommand(cmd);
+    lastWSDoorRequest = thisDoorID;
+    sendCommand(cmd,true,thisDoorID);
     document.getElementById('answerCommand').innerText = protoTx.txData;    
   }
+
   
-  function sendCommand(send_cmd,resetNextCommand=false) {
+  function sendCommand(send_cmd,resetNextCommand=false, doorID) {
     txCommand(send_cmd);
-    if(websocket.readyState !== WebSocket.OPEN) {
-      initWebSocket();
-    }
+    initWebSocket();
     if(resetNextCommand) {
       nextCommandAfterChallenge = null;
     }
-    websocket.send(protoTx.txData);
-    // websocket.close();
+    websocket[doorID].send(protoTx.txData);
+    //websocket[doorID].close();
   }
   
   function txCommand(command) {
@@ -398,18 +447,25 @@
   }
 
   function initWebSocket() {
-    console.log('Trying to open a WebSocket connection...');
-    websocket = new WebSocket(gateway);
-    websocket.onopen    = onOpen;
-    websocket.onclose   = onClose;
-    websocket.onmessage = onMessage; // <-- add this line
+    gateways.forEach((element,index) => {
+      if(websocket[index]==null || websocket[index].readyState !== WebSocket.OPEN) {
+        console.log('Trying to open a WebSocket connection...');
+        websocket[index] = new WebSocket(gateways[index]);
+        websocket[index].onopen    = onOpen;
+        websocket[index].onclose   = onClose;
+        websocket[index].onmessage = onMessage; // <-- add this line  
+      }
+      
+    }
+  );
+    
   }
   function onOpen(event) {
     console.log('Connection opened');
   }
   function onClose(event) {
     console.log('Connection closed');
-    setTimeout(initWebSocket, 2000);
+    // setTimeout(initWebSocket, 2000);
   }
   function onMessage(event) {
     var state;
@@ -425,14 +481,13 @@
     }     
   }
   function onBlob(blob) {
-    console.log(blob);
     blob.arrayBuffer().then(buffer => {
       const msgdata = new Uint8Array(buffer);
       
       rxCommand(msgdata);
 
       if(nextCommandAfterChallenge!=null) {
-        sendCommand(nextCommandAfterChallenge,true);
+        sendCommand(nextCommandAfterChallenge,true,lastWSDoorRequest);
       }
     });
   }
@@ -452,7 +507,9 @@
         reader.onload = function(e) {
             fileContent = e.target.result;  // Dateiinhalt in die Variable ablegen
             let msg = decryptKey(fileContent);
-            document.getElementById('fileContent').innerText = msg;  
+            document.getElementById('fileContent').innerText = msg;
+            document.getElementById('transferName').innerText = msg;
+            document.getElementById('privateKey').value = fileContent;  
         };
         document.getElementById('stateFile').innerText = file.name;
         reader.readAsText(file);  // Datei als Text lesen
@@ -492,11 +549,11 @@
     qrcode.makeCode(content);
   }
 
-  function toggle(){
-    if(websocket.readyState !== WebSocket.OPEN) {
+  function toggle(doorID){
+    if(websocket[doorID].readyState !== WebSocket.OPEN) {
       initWebSocket();
     }
-    websocket.send('toggle');
+    websocket[doorID].send('toggle');
   }
   function butFile(){
 

@@ -4,10 +4,13 @@
 
 #include "LL_Lib.h"
 //#include <FastLED.h>
-#include "Freenove_WS2812_Lib_for_ESP32.h"
+//#include "Freenove_WS2812_Lib_for_ESP32.h"
+#include <Adafruit_NeoPixel.h>
 
 //CRGB fastleds[1];
-Freenove_ESP32_WS2812 leds = Freenove_ESP32_WS2812(2, 5, 0, TYPE_GRB); // 2 led on GPIO 5
+//Freenove_ESP32_WS2812 leds = Freenove_ESP32_WS2812(2, 5, 0, TYPE_GRB); // 2 led on GPIO 5
+Adafruit_NeoPixel leds(2, 5, NEO_GRB + NEO_KHZ800); // 2 led on GPIO 5
+
 
 struct led_ani_s {
   int state;
@@ -110,7 +113,7 @@ void uiHandle() {
         if(led_ani.state != 0) {
           led_ani.state = 2;
           led_ani.eMs = 0;
-          leds.setAllLedsColorData(led_ani.rgbB);
+          leds.fill(led_ani.rgbB);
           leds.show();
         }
       }
@@ -127,7 +130,7 @@ void uiHandle() {
         if(led_ani.state != 0) {
           led_ani.state = 1;
           led_ani.eMs = 0;
-          leds.setAllLedsColorData(led_ani.rgbA);
+          leds.fill(led_ani.rgbA);
           leds.show();
         }
       }
@@ -139,7 +142,7 @@ void uiHandle() {
 }
 
 void uiSetLED(uint32_t rgb) {
-  leds.setAllLedsColorData(rgb);
+  leds.fill(rgb);
   leds.show();
   led_ani.state = 0;
 }
@@ -154,7 +157,7 @@ void uiBlinkLED(uint32_t rgbA, uint16_t msA, uint32_t rgbB, uint16_t msB, uint16
   led_ani.steps = steps;
   led_ani.stepCount = 0;
   led_ani.state = 1;
-  leds.setAllLedsColorData(rgbA);
+  leds.fill(rgbA);
   leds.show();
 }
 

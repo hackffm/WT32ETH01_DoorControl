@@ -1,3 +1,29 @@
+/*
+ MIT Licencse
+
+ Hackerspace FFM e.V. Door Lock
+
+ Uses WT32-ETH01 module with Ethernet. Ethernet is used for LAN connection, Wifi is only used for ESP-Now.
+
+ GPIO1, GPIO3, GPIO0: For programming only (and serial console)
+
+ GPIO32, GPIO33: SDA, SCL for SSD1306 OLED (optional)
+
+ GPIO5: Neopixel (Inside + Outside, 2 in a row, showing door lock status)
+ GPIO36: Input for door switch (AnalogRead(GPIO36) < 150: Door is closed, > 150: Door is open). Add pullup here!
+ GPIO39: Input for buttons (AnalogRead(GPIO39). Red+Yellow Button via Resistors.
+
+ DEF_STEPPERDRIVE: 
+   GPIO17, GPIO35, GPIO4, GPIO12, GPIO2: Stepper based on TMC5160 (DRV_ENN, SDO, CSN, SCK, SDI)
+   GIPO14, GPIO15: SDA, SCL for AS5600 (Magnet encoder, position of Lock)
+
+ DEF_LOCKDRIVE: (4 Lines to Lockdrive, GND, +5V, Open, Close)
+   GPIO12, GPIO2: Lockdrive based on Open and Close Button (Open-Button, Close-Button)
+
+*/
+
+
+
 #include <MyCredsHackffm.h>      // Define WIFI_SSID and WIFI_PASSWORD here
 #include <elapsedMillis.h>
 #include <ETH.h>
@@ -35,16 +61,20 @@ void setup() {
   LittleFS.begin();
   UserDB.loadUserData();
 
+  LL_Log.println("A."); delay(5000);
+
   xTaskCreatePinnedToCore (
     loop2,     // Function to implement the task
     "loop2",   // Name of the task
-    2000,      // Stack size in words
+    8000,      // Stack size in words
     NULL,      // Task input parameter
     0,         // Priority of the task
     NULL,      // Task handle.
     0          // Core where the task should run
   );
   
+  LL_Log.println("B."); delay(5000);
+
   uiBlinkLED(0xffffff, 1000, 0x0000ff, 400, 10);
 }
 
@@ -106,6 +136,7 @@ void loop() {
   if(LL_Log.receiveLineAvailable()) {
     // LL_Log.printf("Hello world from core %d!\n", xPortGetCoreID() );
     LL_Log.println(LL_Log.receiveLine);
+    if(LL_Log.receiveLine[0]=='?') LL_Log.println("Help: ? l a R | (only after Debug-Unlock): T # ! L W d w c");
     if(LL_Log.receiveLine[0]=='l') lanPrintInfo();
     if(LL_Log.receiveLine[0]=='a') {
       LL_Log.printf("But: %d, Mag: %d, APC: %d\r\n", analogRead(39), analogRead(36), anglePosCum);
@@ -114,7 +145,11 @@ void loop() {
     }
     if(LL_Log.receiveLine[0]=='R') ESP.restart();
     if(LL_Log.receiveLine[0]=='T') {
-      quickEspNow.send (ESPNOW_BROADCAST_ADDRESS, (uint8_t*)LL_Log.receiveLine, strlen(LL_Log.receiveLine));
+      lanEspNowTx((uint8_t*)LL_Log.receiveLine, strlen(LL_Log.receiveLine));
+    }
+    if(LL_Log.receiveLine[0]=='p') {
+      lanPingStart(&LL_Log.receiveLine[1]);
+      LL_Log.printf("Ping %s started.\n", &LL_Log.receiveLine[1]);
     }
     // All here only allowed if debug was unlocked before   
     if(debugUnlocked) {
